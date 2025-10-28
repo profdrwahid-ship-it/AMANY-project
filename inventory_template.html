@@ -1,0 +1,2360 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام متابعة المخزون الدوائي - الهيئة العامة للرعاية الصحية</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #2c3e50;
+      --secondary-color: #3498db;
+      --danger-color: #e74c3c;
+      --warning-color: #f39c12;
+      --success-color: #2ecc71;
+      --text-color: #333;
+      --light-gray: #f5f5f5;
+      --dark-blue: #1a5276;
+      --light-blue: #aed6f1;
+      --purple: #8e44ad;
+      --teal: #1abc9c;
+      --header-height: 90px;
+      --group-color: #8e44ad;
+      --group-light: #d6c0e0;
+      --zero-color: #9b59b6;
+    }
+    
+    @media (max-width: 768px) {
+      :root {
+        --header-height: 150px;
+      }
+    }
+    
+    body {
+      font-family: 'Tajawal', Arial, sans-serif;
+      padding: 0;
+      margin: 0;
+      direction: rtl;
+      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+      color: var(--text-color);
+      min-height: 100vh;
+    }
+    
+    .app-header {
+      background: linear-gradient(to right, var(--dark-blue), var(--primary-color));
+      color: white;
+      padding: 15px 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-height);
+      box-sizing: border-box;
+    }
+    
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 100%;
+    }
+    
+    .logo-container {
+      display: flex;
+      align-items: center;
+    }
+    
+    .logo {
+      height: 60px;
+      margin-left: 15px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+    
+    .app-title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 20px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+    
+    .section {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 25px;
+      border: 1px dashed #ddd;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .section:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+      margin-top: 0;
+      color: var(--secondary-color);
+      font-size: 20px;
+      border-bottom: 2px solid var(--light-blue);
+      padding-bottom: 10px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .section-title i {
+      margin-left: 10px;
+      font-size: 24px;
+    }
+    
+    input[type="file"] {
+      margin: 15px 0;
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      background: white;
+      transition: border-color 0.3s;
+    }
+    
+    input[type="file"]:hover, input[type="file"]:focus {
+      border-color: var(--secondary-color);
+    }
+    
+    button {
+      background: var(--secondary-color);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 15px;
+      transition: all 0.3s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    button i {
+      margin-left: 8px;
+    }
+    
+    button:hover {
+      background: #2980b9;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+    }
+    
+    .btn-danger {
+      background: var(--danger-color);
+    }
+    
+    .btn-danger:hover {
+      background: #c0392b;
+    }
+    
+    .btn-success {
+      background: var(--success-color);
+    }
+    
+    .btn-success:hover {
+      background: #27ae60;
+    }
+    
+    .btn-warning {
+      background: var(--warning-color);
+    }
+    
+    .btn-warning:hover {
+      background: #e67e22;
+    }
+    
+    .btn-purple {
+      background: var(--purple);
+    }
+    
+    .btn-purple:hover {
+      background: #7d3c98;
+    }
+    
+    .btn-teal {
+      background: var(--teal);
+    }
+    
+    .btn-teal:hover {
+      background: #16a085;
+    }
+    
+    .btn-zero {
+      background: var(--zero-color);
+    }
+    
+    .btn-zero:hover {
+      background: #8e44ad;
+    }
+    
+    .table-container {
+      position: relative;
+      overflow: auto;
+      /* تم إزالة الارتفاع الثابت لحل مشكلة العرض المحدود */
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: right;
+    }
+    
+    th {
+      background: linear-gradient(to bottom, var(--secondary-color), var(--dark-blue));
+      color: white;
+      position: sticky;
+      top: 0;
+      font-weight: 600;
+      z-index: 10;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    
+    .danger {
+      background-color: #ffdddd !important;
+    }
+    
+    .warning {
+      background-color: #fff3cd !important;
+    }
+    
+    .safe {
+      background-color: #ddffdd !important;
+    }
+    
+    .zero-stock {
+      background-color: #f0e6f5 !important;
+    }
+    
+    .group-row {
+      background-color: var(--group-light) !important;
+      font-weight: bold;
+      position: sticky;
+      z-index: 5;
+    }
+    
+    .group-header-row {
+      background: linear-gradient(to right, var(--group-color), #7d3c98) !important;
+      color: white;
+      position: sticky;
+      z-index: 5;
+      top: 40px;
+    }
+    
+    .status-need {
+      color: var(--danger-color);
+      font-weight: bold;
+    }
+    
+    .status-idle {
+      color: var(--warning-color);
+      font-weight: bold;
+    }
+    
+    .alert {
+      padding: 18px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+    }
+    
+    .alert i {
+      font-size: 28px;
+      margin-left: 15px;
+    }
+    
+    .alert-danger {
+      background: linear-gradient(to right, #ffdddd, #ffcccc);
+      border-right: 5px solid var(--danger-color);
+    }
+    
+    .alert-warning {
+      background: linear-gradient(to right, #fff3cd, #ffeeba);
+      border-right: 5px solid var(--warning-color);
+    }
+    
+    .alert-success {
+      background: linear-gradient(to right, #ddffdd, #ccffcc);
+      border-right: 5px solid var(--success-color);
+    }
+    
+    .alert-zero {
+      background: linear-gradient(to right, #f0e6f5, #e6d7f0);
+      border-right: 5px solid var(--zero-color);
+    }
+    
+    .file-name {
+      font-size: 14px;
+      color: #7f8c8d;
+      text-align: center;
+      margin: 10px 0;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px dashed #ccc;
+    }
+    
+    .action-buttons {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    
+    .action-buttons button {
+      margin-top: 0;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .search-container {
+      position: relative;
+      margin: 25px 0;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    #medicineSearch {
+      width: 100%;
+      padding: 14px 20px;
+      border: 2px solid #4CAF50;
+      border-radius: 10px;
+      font-size: 17px;
+      outline: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: all 0.3s;
+    }
+
+    #medicineSearch:focus {
+      border-color: #2E7D32;
+      box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+
+    #searchSuggestions {
+      display: none;
+      position: absolute;
+      width: 100%;
+      max-height: 300px;
+      overflow-y: auto;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+
+    .suggestion-item {
+      padding: 12px 18px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+    }
+
+    .suggestion-item:hover {
+      background-color: #f0f8ff;
+    }
+
+    .suggestion-item .highlight {
+      color: #2E7D32;
+      font-weight: bold;
+    }
+    
+    .suggestion-item i {
+      margin-left: 10px;
+      color: var(--secondary-color);
+    }
+
+    .no-results {
+      padding: 15px;
+      color: #757575;
+      text-align: center;
+    }
+    
+    .tab-container {
+      display: flex;
+      margin-bottom: 25px;
+      border-bottom: 2px solid var(--secondary-color);
+      flex-wrap: wrap;
+    }
+    
+    .tab {
+      padding: 12px 25px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      margin-left: 5px;
+      background: #e0e0e0;
+      transition: all 0.3s;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+    }
+    
+    .tab i {
+      margin-left: 8px;
+      font-size: 18px;
+    }
+    
+    .tab.active {
+      background: white;
+      border-color: #ddd;
+      border-bottom-color: white;
+      margin-bottom: -2px;
+      font-weight: bold;
+      color: var(--secondary-color);
+      box-shadow: 0 -3px 10px rgba(0,0,0,0.05);
+    }
+    
+    .tab:hover:not(.active) {
+      background: #d5d5d5;
+    }
+    
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.5s;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .changes-table {
+      width: 100%;
+      margin-top: 15px;
+    }
+    
+    .changes-table th {
+      background: linear-gradient(to bottom, #2c3e50, #1a252f);
+    }
+    
+    .price-controls {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin: 20px 0;
+    }
+    
+    .price-controls input {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 15px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    
+    .price-history {
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 8px;
+      background: #f9f9f9;
+    }
+    
+    .price-entry {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .price-entry:last-child {
+      border-bottom: none;
+    }
+    
+    .shortage-report {
+      background: linear-gradient(to right, #fff8e1, #fff3cd);
+      border-right: 5px solid #ffc107;
+      padding: 25px;
+      margin-top: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    }
+    
+    .shortage-item {
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+    }
+    
+    .alternative-item {
+      padding: 12px 15px;
+      background: #e8f5e9;
+      margin: 10px 0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .alternative-item i {
+      margin-left: 10px;
+      color: var(--success-color);
+    }
+    
+    .summary-cards {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 25px 0;
+    }
+    
+    .summary-card {
+      flex: 1;
+      min-width: 250px;
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+      text-align: center;
+      border-top: 5px solid var(--secondary-color);
+    }
+    
+    .summary-card.danger {
+      border-top-color: var(--danger-color);
+    }
+    
+    .summary-card.warning {
+      border-top-color: var(--warning-color);
+    }
+    
+    .summary-card.success {
+      border-top-color: var(--success-color);
+    }
+    
+    .summary-card.zero {
+      border-top-color: var(--zero-color);
+    }
+    
+    .summary-card h3 {
+      margin-top: 0;
+      color: var(--dark-blue);
+      font-size: 18px;
+    }
+    
+    .summary-card .value {
+      font-size: 36px;
+      font-weight: bold;
+      margin: 15px 0;
+    }
+    
+    .summary-card.danger .value {
+      color: var(--danger-color);
+    }
+    
+    .summary-card.warning .value {
+      color: var(--warning-color);
+    }
+    
+    .summary-card.success .value {
+      color: var(--success-color);
+    }
+    
+    .summary-card.zero .value {
+      color: var(--zero-color);
+    }
+    
+    .unit-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--light-blue);
+      color: var(--dark-blue);
+      font-size: 12px;
+      margin: 0 5px;
+    }
+    
+    .price-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #e8f4ff;
+      color: #1a5276;
+      font-size: 12px;
+      margin: 0 5px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .price-badge:hover {
+      background: #d6e7ff;
+      transform: scale(1.05);
+    }
+    
+    .footer {
+      text-align: center;
+      padding: 25px;
+      margin-top: 30px;
+      background: var(--dark-blue);
+      color: white;
+      border-radius: 10px;
+    }
+    
+    .days-indicator {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin: 0 5px;
+      font-weight: bold;
+    }
+    
+    .days-danger {
+      background-color: #ffdddd;
+      color: #c0392b;
+    }
+    
+    .days-warning {
+      background-color: #fff3cd;
+      color: #e67e22;
+    }
+    
+    .days-safe {
+      background-color: #ddffdd;
+      color: #27ae60;
+    }
+    
+    .price-history-icon {
+      cursor: pointer;
+      margin-right: 8px;
+      color: #7d3c98;
+      font-size: 16px;
+      transition: all 0.3s;
+    }
+    
+    .price-history-icon:hover {
+      color: #6c3483;
+      transform: scale(1.2);
+    }
+    
+    .price-history-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .price-history-content {
+      background: white;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 25px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }
+    
+    .price-history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 2px solid var(--light-blue);
+      padding-bottom: 15px;
+    }
+    
+    .price-history-title {
+      margin: 0;
+      color: var(--dark-blue);
+    }
+    
+    .close-modal {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #7f8c8d;
+      transition: color 0.3s;
+    }
+    
+    .close-modal:hover {
+      color: var(--danger-color);
+    }
+    
+    .drug-type-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 15px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    
+    .vital {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .essential {
+      background: #3498db;
+      color: white;
+    }
+    
+    .nonessential {
+      background: #f39c12;
+      color: white;
+    }
+    
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 8px;
+      color: white;
+      font-weight: bold;
+      z-index: 3000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: slideIn 0.3s, fadeOut 0.5s 2.5s;
+    }
+    
+    .notification.success {
+      background: linear-gradient(to right, #2ecc71, #27ae60);
+    }
+    
+    .notification.error {
+      background: linear-gradient(to right, #e74c3c, #c0392b);
+    }
+    
+    .notification.warning {
+      background: linear-gradient(to right, #f39c12, #e67e22);
+    }
+    
+    .notification.zero {
+      background: linear-gradient(to right, #9b59b6, #8e44ad);
+    }
+    
+    @keyframes slideIn {
+      from { right: -300px; opacity: 0; }
+      to { right: 20px; opacity: 1; }
+    }
+    
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+    
+    .view-toggle {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+      gap: 15px;
+    }
+    
+    .view-toggle button {
+      margin-top: 0;
+      background: #e0e7ff;
+      color: var(--dark-blue);
+      border: 2px solid var(--secondary-color);
+      font-weight: bold;
+    }
+    
+    .view-toggle button.active {
+      background: var(--secondary-color);
+      color: white;
+    }
+    
+    .group-info {
+      display: inline-block;
+      background: #e1f5fe;
+      padding: 5px 10px;
+      border-radius: 4px;
+      margin: 0 5px;
+      font-size: 12px;
+    }
+    
+    .zero-stock-badge {
+      background: #ffdddd;
+      color: #c0392b;
+      padding: 3px 8px;
+      border-radius: 15px;
+      font-size: 12px;
+      margin-left: 5px;
+    }
+    
+    .required-quantity {
+      background: #e8f4ff;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      color: #1a5276;
+    }
+    
+    .zero-stock-row {
+      background: repeating-linear-gradient(
+        45deg,
+        #f8f0fc,
+        #f8f0fc 10px,
+        #f0e0fa 10px,
+        #f0e0fa 20px
+      );
+    }
+    
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        text-align: center;
+      }
+      
+      .logo-container {
+        margin-bottom: 15px;
+        justify-content: center;
+      }
+      
+      .container {
+        padding: 15px;
+      }
+      
+      table {
+        font-size: 13px;
+      }
+      
+      th, td {
+        padding: 8px;
+      }
+      
+      .tab {
+        padding: 10px 15px;
+        font-size: 14px;
+        margin-bottom: 5px;
+      }
+      
+      .action-buttons button {
+        min-width: 100%;
+      }
+      
+      .price-history-content {
+        width: 95%;
+        padding: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-content">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/tahasalim555/pharmacy-inventory/main/eha-logo.jpg" alt="شعار الهيئة" class="logo">
+        <h1 class="app-title">
+          <i class="fas fa-pills"></i> نظام متابعة المخزون الدوائي - معدل
+        </h1>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tab-container">
+      <div class="tab active" onclick="openTab('setupTab')">
+        <i class="fas fa-cog"></i> إعداد البيانات الأساسية
+      </div>
+      <div class="tab" onclick="openTab('dailyTab')">
+        <i class="fas fa-file-import"></i> إدخال المنصرف اليومي
+      </div>
+      <div class="tab" onclick="openTab('incomingTab')">
+        <i class="fas fa-truck-loading"></i> إضافة وارد الأدوية
+      </div>
+      <div class="tab" onclick="openTab('reportTab')">
+        <i class="fas fa-chart-bar"></i> عرض التقرير
+      </div>
+    </div>
+
+    <div id="setupTab" class="tab-content active">
+      <div class="summary-cards">
+        <div class="summary-card">
+          <h3><i class="fas fa-boxes"></i> إجمالي الأدوية</h3>
+          <div class="value" id="totalDrugs">0</div>
+          <p>الأصناف المسجلة في النظام</p>
+        </div>
+        <div class="summary-card success">
+          <h3><i class="fas fa-check-circle"></i> أصناف آمنة</h3>
+          <div class="value" id="safeDrugs">0</div>
+          <p>فوق حد الأمان</p>
+        </div>
+        <div class="summary-card warning">
+          <h3><i class="fas fa-exclamation-triangle"></i> أصناف تحت المراقبة</h3>
+          <div class="value" id="warningDrugs">0</div>
+          <p>تحت حد الأمان</p>
+        </div>
+        <div class="summary-card danger">
+          <h3><i class="fas fa-exclamation-circle"></i> أصناف في خطر</h3>
+          <div class="value" id="dangerDrugs">0</div>
+          <p>تحت حد الخطر</p>
+        </div>
+        <div class="summary-card zero">
+          <h3><i class="fas fa-exclamation"></i> أصناف منتهية</h3>
+          <div class="value" id="zeroStockDrugs">0</div>
+          <p>مخزونها صفر</p>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3 class="section-title">
+          <i class="fas fa-database"></i> الخطوة 1: رفع ملف المخزون الأساسي
+        </h3>
+        <input type="file" id="inventoryFile" accept=".xlsx, .xls">
+        <div id="inventoryFileName" class="file-name"></div>
+        <p>يجب أن يحتوي على: اسم الدواء، نوع الدواء، المخزون الحالي، المادة الفعالة، التركيز، نوع الوحدة، وبيانات استهلاك الأشهر السابقة</p>
+        <button onclick="saveBaseData()">
+          <i class="fas fa-save"></i> حفظ البيانات الأساسية
+        </button>
+      </div>
+    </div>
+
+    <div id="dailyTab" class="tab-content">
+      <div class="section">
+        <h3 class="section-title">
+          <i class="fas fa-file-export"></i> إدخال المنصرف اليومي
+        </h3>
+        <input type="file" id="consumptionFile" accept=".xlsx, .xls">
+        <div id="consumptionFileName" class="file-name"></div>
+        <p>يجب أن يحتوي على: اسم الدواء، الكمية المستهلكة</p>
+        <button onclick="addDailyConsumption()">
+          <i class="fas fa-plus-circle"></i> إضافة المنصرف اليومي
+        </button>
+        <button onclick="saveUpdatedInventory()" id="saveUpdatedBtn" style="display: none; background: var(--success-color); margin-right: 10px;">
+          <i class="fas fa-check-double"></i> حفظ المخزون المحدث
+        </button>
+      </div>
+      <div id="changesSummary" class="section" style="display: none;">
+        <h3 class="section-title">
+          <i class="fas fa-list"></i> ملخص التغييرات
+        </h3>
+        <div id="changesList"></div>
+      </div>
+    </div>
+
+    <div id="incomingTab" class="tab-content">
+      <div class="section">
+        <h3 class="section-title">
+          <i class="fas fa-truck"></i> إضافة وارد الأدوية
+        </h3>
+        <input type="file" id="incomingFile" accept=".xlsx, .xls">
+        <div id="incomingFileName" class="file-name"></div>
+        <p>يجب أن يحتوي على: اسم الدواء، الكمية الواردة، سعر الوحدة، السعر الإجمالي، المادة الفعالة، التركيز، نوع الوحدة</p>
+        <button onclick="addIncomingStock()">
+          <i class="fas fa-plus"></i> إضافة الوارد
+        </button>
+      </div>
+      <div id="incomingSummary" class="section" style="display: none;">
+        <h3 class="section-title">
+          <i class="fas fa-clipboard-list"></i> ملخص الوارد
+        </h3>
+        <div id="incomingList"></div>
+      </div>
+    </div>
+
+    <div id="reportTab" class="tab-content">
+      <div class="action-buttons">
+        <button onclick="generateReport()" class="btn-success">
+          <i class="fas fa-cogs"></i> توليد التقرير
+        </button>
+        <button onclick="downloadExcel()" id="downloadBtn" class="btn-purple">
+          <i class="fas fa-file-excel"></i> تنزيل النتائج Excel
+        </button>
+        <button onclick="downloadShortageExcel()" id="downloadShortageBtn" class="btn-teal">
+          <i class="fas fa-file-excel"></i> تنزيل تقرير النواقص
+        </button>
+        <button onclick="downloadZeroStockExcel()" id="downloadZeroStockBtn" class="btn-zero">
+          <i class="fas fa-file-excel"></i> تنزيل الأصناف المنتهية
+        </button>
+        <button onclick="resetData()" class="btn-danger">
+          <i class="fas fa-trash-alt"></i> مسح جميع البيانات
+        </button>
+      </div>
+
+      <div id="alerts"></div>
+      
+      <div class="view-toggle">
+        <button id="groupedViewBtn" class="active" onclick="toggleView('grouped')">
+          <i class="fas fa-layer-group"></i> عرض المجموعات
+        </button>
+        <button id="detailedViewBtn" onclick="toggleView('detailed')">
+          <i class="fas fa-list"></i> عرض مفصل
+        </button>
+      </div>
+
+      <div class="section">
+        <h3 class="section-title">
+          <i class="fas fa-chart-line"></i> نتائج التحليل
+        </h3>
+        <div class="search-container">
+          <input 
+            type="text" 
+            id="medicineSearch" 
+            placeholder="ابحث عن دواء (استخدم % للحروف غير المؤكدة)..." 
+            autocomplete="off"
+          >
+          <div id="searchSuggestions"></div>
+        </div>
+        <div id="reportDate" style="text-align: center; margin: 20px 0; font-weight: bold; font-size: 18px;"></div>
+        <div class="table-container">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>اسم الدواء</th>
+                <th>المادة الفعالة</th>
+                <th>التركيز</th>
+                <th>نوع الوحدة</th>
+                <th>أعلى 3 شهور</th>
+                <th>متوسط الاستهلاك</th>
+                <th>حد الأمان</th>
+                <th>حد الخطر</th>
+                <th>حد الكفاية</th>
+                <th>المخزون الحالي</th>
+                <th>المنصرف اليومي</th>
+                <th>الوارد اليومي</th>
+                <th>الكمية المتبقية</th>
+                <th>الكمية المطلوبة</th>
+                <th>سعر الوحدة</th>
+                <th>عدد الأيام</th>
+                <th>حالة الصنف</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div id="shortageReport" class="shortage-report">
+        <h3 style="margin-top: 0; color: var(--warning-color);">
+          <i class="fas fa-exclamation-triangle"></i> تقرير النواقص الحرجة
+        </h3>
+        <div id="shortageList"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>© 2023 الهيئة العامة للرعاية الصحية - نظام متابعة المخزون الدوائي</p>
+      <p>الإصدار 4.0 | تم التطوير بواسطة فريق الدعم الفني</p>
+    </div>
+  </div>
+
+  <!-- Modal for Price History -->
+  <div id="priceHistoryModal" class="price-history-modal">
+    <div class="price-history-content">
+      <div class="price-history-header">
+        <h3 class="price-history-title" id="priceHistoryTitle"></h3>
+        <button class="close-modal" onclick="closePriceHistory()">&times;</button>
+      </div>
+      <div id="priceHistoryContent"></div>
+    </div>
+  </div>
+
+  <script>
+    // متغيرات عامة
+    let medicineNames = [];
+    let analysisResults = [];
+    let baseInventoryData = null;
+    let updatedInventoryData = null;
+    let consumptionChanges = [];
+    let incomingChanges = [];
+    let priceHistory = {};
+    let groupedInventory = {};
+    let shortageReport = [];
+    let zeroStockItems = [];
+    let monthlyData = {};
+    let currentView = 'grouped'; // 'grouped' أو 'detailed'
+
+    // تحميل البيانات المحفوظة عند بدء التشغيل
+    window.onload = function() {
+      loadSavedData();
+      updateSummaryCards();
+      
+      // إضافة مستمعين لأحداث تغيير الملفات
+      document.getElementById('inventoryFile').addEventListener('change', function(e) {
+        document.getElementById('inventoryFileName').textContent = 'تم اختيار: ' + (e.target.files[0]?.name || 'لا يوجد ملف');
+      });
+      
+      document.getElementById('consumptionFile').addEventListener('change', function(e) {
+        document.getElementById('consumptionFileName').textContent = 'تم اختيار: ' + (e.target.files[0]?.name || 'لا يوجد ملف');
+      });
+      
+      document.getElementById('incomingFile').addEventListener('change', function(e) {
+        document.getElementById('incomingFileName').textContent = 'تم اختيار: ' + (e.target.files[0]?.name || 'لا يوجد ملف');
+      });
+    };
+    
+    function showNotification(message, isSuccess, type = 'success') {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      let icon = 'check-circle';
+      
+      if (type === 'error') icon = 'exclamation-circle';
+      else if (type === 'warning') icon = 'exclamation-triangle';
+      else if (type === 'zero') icon = 'exclamation';
+      
+      notification.innerHTML = `<i class="fas fa-${icon}"></i> ${message}`;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 3000);
+    }
+    
+    function toggleView(viewType) {
+      currentView = viewType;
+      
+      // تحديث أزرار العرض
+      document.getElementById('groupedViewBtn').classList.toggle('active', viewType === 'grouped');
+      document.getElementById('detailedViewBtn').classList.toggle('active', viewType === 'detailed');
+      
+      // إعادة عرض النتائج حسب نوع العرض المحدد
+      if (analysisResults.length > 0) {
+        displayResults(analysisResults);
+      }
+    }
+
+    function openTab(tabId) {
+      // إخفاء جميع المحتويات
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      
+      // إلغاء تنشيط جميع الألسنة
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      // عرض المحتوى المحدد وتنشيط اللسان
+      document.getElementById(tabId).classList.add('active');
+      event.currentTarget.classList.add('active');
+      
+      // تحديث بطاقات الملخص عند فتح تبويب الإعداد
+      if (tabId === 'setupTab') {
+        updateSummaryCards();
+      }
+    }
+
+    function loadSavedData() {
+      const savedData = localStorage.getItem('pharmacyBaseData');
+      if (savedData) {
+        baseInventoryData = JSON.parse(savedData);
+        document.getElementById('inventoryFileName').textContent = 'تم تحميل البيانات الأساسية المحفوظة';
+        
+        // استخراج أسماء الأدوية للبحث
+        medicineNames = baseInventoryData.map(item => item['اسم الدواء'] || item['الصنف'] || 'غير معروف');
+      }
+      
+      // تحميل سجل الأسعار
+      const savedPriceHistory = localStorage.getItem('pharmacyPriceHistory');
+      if (savedPriceHistory) {
+        priceHistory = JSON.parse(savedPriceHistory);
+      }
+      
+      // تحميل البيانات الشهرية
+      const savedMonthlyData = localStorage.getItem('pharmacyMonthlyData');
+      if (savedMonthlyData) {
+        monthlyData = JSON.parse(savedMonthlyData);
+      }
+    }
+    
+    function updateSummaryCards() {
+      const dataToUse = updatedInventoryData || baseInventoryData;
+      if (!dataToUse) return;
+      
+      document.getElementById('totalDrugs').textContent = dataToUse.length;
+      
+      // تحليل البيانات لتحديد الحالات
+      let safeCount = 0;
+      let warningCount = 0;
+      let dangerCount = 0;
+      let zeroStockCount = 0;
+      
+      dataToUse.forEach(item => {
+        const currentStock = parseFloat(item['المخزون الحالي']) || 0;
+        
+        // حساب حالة الدواء الفردي
+        if (currentStock <= 0) {
+          zeroStockCount++;
+        }
+        
+        // إذا كانت البيانات تحتوي على المؤشرات، استخدمها
+        if (item['حد الخطر'] && item['حد الأمان']) {
+          const dangerThreshold = parseFloat(item['حد الخطر']) || 0;
+          const safeThreshold = parseFloat(item['حد الأمان']) || 0;
+          
+          if (currentStock <= dangerThreshold) {
+            dangerCount++;
+          } else if (currentStock <= safeThreshold) {
+            warningCount++;
+          } else {
+            safeCount++;
+          }
+        } else {
+          // حساب تقديري إذا لم تكن المؤشرات موجودة
+          const monthlyAvg = calculateMonthlyAverage(item);
+          const dangerThreshold = monthlyAvg * 0.25;
+          const safeThreshold = monthlyAvg * 0.5;
+          
+          if (currentStock <= dangerThreshold) {
+            dangerCount++;
+          } else if (currentStock <= safeThreshold) {
+            warningCount++;
+          } else {
+            safeCount++;
+          }
+        }
+      });
+      
+      document.getElementById('safeDrugs').textContent = safeCount;
+      document.getElementById('warningDrugs').textContent = warningCount;
+      document.getElementById('dangerDrugs').textContent = dangerCount;
+      document.getElementById('zeroStockDrugs').textContent = zeroStockCount;
+    }
+    
+    function calculateMonthlyAverage(item) {
+      const consumptionValues = [];
+      for (const key in item) {
+        if (key !== 'اسم الدواء' && key !== 'نوع الدواء' && key !== 'المخزون الحالي' && 
+            key !== 'المادة الفعالة' && key !== 'التركيز' && key !== 'نوع الوحدة' && 
+            key !== 'سعر الوحدة' && key !== 'الوارد اليومي' && key !== 'المنصرف اليومي' && !isNaN(item[key])) {
+          consumptionValues.push(parseFloat(item[key]));
+        }
+      }
+      
+      if (consumptionValues.length === 0) return 0;
+      
+      const sorted = [...consumptionValues].sort((a, b) => b - a);
+      const top3 = sorted.slice(0, 3);
+      return top3.reduce((sum, val) => sum + val, 0) / top3.length;
+    }
+
+    function saveBaseData() {
+      const inventoryFile = document.getElementById('inventoryFile').files[0];
+      if (!inventoryFile) {
+        showNotification("يجب رفع ملف المخزون الأساسي أولاً", false, 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          baseInventoryData = XLSX.utils.sheet_to_json(sheet);
+          
+          // إضافة حقول إضافية إذا لم تكن موجودة
+          baseInventoryData.forEach(item => {
+            if (!item['المادة الفعالة']) item['المادة الفعالة'] = 'غير معروف';
+            if (!item['التركيز']) item['التركيز'] = 'غير معروف';
+            if (!item['نوع الوحدة']) item['نوع الوحدة'] = 'وحدة';
+            if (!item['سعر الوحدة']) item['سعر الوحدة'] = 0;
+            if (!item['نوع الدواء']) item['نوع الدواء'] = 'غير أساسي';
+            if (!item['المنصرف اليومي']) item['المنصرف اليومي'] = 0;
+            if (!item['الوارد اليومي']) item['الوارد اليومي'] = 0;
+          });
+          
+          // حفظ البيانات الأساسية
+          localStorage.setItem('pharmacyBaseData', JSON.stringify(baseInventoryData));
+          
+          // استخراج أسماء الأدوية للبحث
+          medicineNames = baseInventoryData.map(item => item['اسم الدواء'] || item['الصنف'] || 'غير معروف');
+          
+          // تحديث بطاقات الملخص
+          updateSummaryCards();
+          
+          showNotification("تم حفظ البيانات الأساسية بنجاح", true);
+        } catch (e) {
+          showNotification(`حدث خطأ أثناء معالجة الملف: ${e.message}`, false, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(inventoryFile);
+    }
+
+    function addDailyConsumption() {
+      if (!baseInventoryData) {
+        showNotification("يجب حفظ البيانات الأساسية أولاً من تبويب الإعداد", false, 'error');
+        return;
+      }
+
+      const consumptionFile = document.getElementById('consumptionFile').files[0];
+      if (!consumptionFile) {
+        showNotification("يجب رفع ملف المنصرف اليومي", false, 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const consumptionData = XLSX.utils.sheet_to_json(sheet);
+
+          // نسخ البيانات الأساسية لتعديلها
+          updatedInventoryData = JSON.parse(JSON.stringify(baseInventoryData));
+          consumptionChanges = [];
+
+          // تطبيق المنصرف اليومي على البيانات وتسجيل التغييرات
+          consumptionData.forEach(item => {
+            const drugName = item['اسم الدواء'] || item['الصنف'];
+            const quantity = parseFloat(item['الكمية المستهلكة'] || item['المنصرف'] || 0);
+
+            const drugIndex = updatedInventoryData.findIndex(d => (d['اسم الدواء'] || d['الصنف']) === drugName);
+            if (drugIndex !== -1) {
+              const oldStock = parseFloat(updatedInventoryData[drugIndex]['المخزون الحالي']) || 0;
+              updatedInventoryData[drugIndex]['المخزون الحالي'] = oldStock - quantity;
+              updatedInventoryData[drugIndex]['المنصرف اليومي'] = quantity;
+              
+              // تسجيل التغيير
+              consumptionChanges.push({
+                name: drugName,
+                oldStock: oldStock,
+                newStock: updatedInventoryData[drugIndex]['المخزون الحالي'],
+                consumed: quantity
+              });
+            }
+          });
+
+          // عرض التغييرات
+          displayChangesSummary();
+          
+          // تفعيل زر حفظ المخزون المحدث
+          document.getElementById('saveUpdatedBtn').style.display = 'inline-block';
+          document.getElementById('changesSummary').style.display = 'block';
+
+          showNotification("تم تحديث البيانات بنجاح بإضافة المنصرف اليومي", true);
+        } catch (e) {
+          showNotification(`حدث خطأ أثناء معالجة الملف: ${e.message}`, false, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(consumptionFile);
+    }
+    
+    function addIncomingStock() {
+      if (!baseInventoryData) {
+        showNotification("يجب حفظ البيانات الأساسية أولاً من تبويب الإعداد", false, 'error');
+        return;
+      }
+
+      const incomingFile = document.getElementById('incomingFile').files[0];
+      if (!incomingFile) {
+        showNotification("يجب رفع ملف الوارد", false, 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const incomingData = XLSX.utils.sheet_to_json(sheet);
+          
+          // نسخ البيانات الأساسية لتعديلها
+          updatedInventoryData = JSON.parse(JSON.stringify(baseInventoryData));
+          incomingChanges = [];
+
+          // تطبيق الوارد على المخزون
+          incomingData.forEach(item => {
+            const drugName = item['اسم الدواء'] || item['الصنف'];
+            const quantity = parseFloat(item['الكمية الواردة'] || item['الوارد'] || 0);
+            const unitPrice = parseFloat(item['سعر الوحدة'] || 0);
+            const activeIngredient = item['المادة الفعالة'] || '';
+            const concentration = item['التركيز'] || '';
+            const unitType = item['نوع الوحدة'] || '';
+            const drugType = item['نوع الدواء'] || '';
+
+            const drugIndex = updatedInventoryData.findIndex(d => (d['اسم الدواء'] || d['الصنف']) === drugName);
+            
+            if (drugIndex !== -1) {
+              const oldStock = parseFloat(updatedInventoryData[drugIndex]['المخزون الحالي']) || 0;
+              updatedInventoryData[drugIndex]['المخزون الحالي'] = oldStock + quantity;
+              updatedInventoryData[drugIndex]['الوارد اليومي'] = quantity;
+              
+              // تحديث السعر إذا كان موجوداً
+              if (unitPrice > 0) {
+                const oldPrice = parseFloat(updatedInventoryData[drugIndex]['سعر الوحدة']) || 0;
+                updatedInventoryData[drugIndex]['سعر الوحدة'] = unitPrice;
+                
+                // تحديث سجل الأسعار
+                if (oldPrice !== unitPrice) {
+                  if (!priceHistory[drugName]) priceHistory[drugName] = [];
+                  priceHistory[drugName].push({
+                    date: new Date().toLocaleDateString('ar-EG'),
+                    price: unitPrice
+                  });
+                  localStorage.setItem('pharmacyPriceHistory', JSON.stringify(priceHistory));
+                }
+              }
+              
+              // تحديث نوع الدواء إذا تم توفيره
+              if (drugType) {
+                updatedInventoryData[drugIndex]['نوع الدواء'] = drugType;
+              }
+              
+              // تسجيل التغيير
+              incomingChanges.push({
+                name: drugName,
+                oldStock: oldStock,
+                newStock: updatedInventoryData[drugIndex]['المخزون الحالي'],
+                incoming: quantity,
+                unitPrice: unitPrice,
+                drugType: drugType
+              });
+            } else {
+              // إضافة صنف جديد إذا لم يكن موجوداً
+              const newItem = {
+                'اسم الدواء': drugName,
+                'المخزون الحالي': quantity,
+                'نوع الدواء': drugType,
+                'المادة الفعالة': activeIngredient,
+                'التركيز': concentration,
+                'نوع الوحدة': unitType,
+                'سعر الوحدة': unitPrice,
+                'الوارد اليومي': quantity
+              };
+              
+              updatedInventoryData.push(newItem);
+              incomingChanges.push({
+                name: drugName,
+                oldStock: 0,
+                newStock: quantity,
+                incoming: quantity,
+                unitPrice: unitPrice,
+                drugType: drugType
+              });
+              
+              // إضافة إلى سجل الأسعار
+              if (unitPrice > 0) {
+                if (!priceHistory[drugName]) priceHistory[drugName] = [];
+                priceHistory[drugName].push({
+                  date: new Date().toLocaleDateString('ar-EG'),
+                  price: unitPrice
+                });
+                localStorage.setItem('pharmacyPriceHistory', JSON.stringify(priceHistory));
+              }
+            }
+          });
+
+          // عرض التغييرات
+          displayIncomingSummary();
+          
+          // تفعيل زر حفظ المخزون المحدث
+          document.getElementById('saveUpdatedBtn').style.display = 'inline-block';
+          document.getElementById('incomingSummary').style.display = 'block';
+
+          showNotification("تم تحديث البيانات بنجاح بإضافة الوارد", true);
+        } catch (e) {
+          showNotification(`حدث خطأ أثناء معالجة الملف: ${e.message}`, false, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(incomingFile);
+    }
+
+    function displayChangesSummary() {
+      const changesList = document.getElementById('changesList');
+      changesList.innerHTML = '';
+      
+      if (consumptionChanges.length === 0) {
+        changesList.innerHTML = '<p>لا توجد تغييرات في المخزون</p>';
+        return;
+      }
+      
+      let html = '<table class="changes-table"><tr><th>اسم الدواء</th><th>الكمية المستهلكة</th><th>المخزون السابق</th><th>المخزون الجديد</th></tr>';
+      
+      consumptionChanges.forEach(change => {
+        html += `<tr>
+          <td>${change.name}</td>
+          <td>${change.consumed}</td>
+          <td>${change.oldStock}</td>
+          <td>${change.newStock}</td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      changesList.innerHTML = html;
+    }
+    
+    function displayIncomingSummary() {
+      const incomingList = document.getElementById('incomingList');
+      incomingList.innerHTML = '';
+      
+      if (incomingChanges.length === 0) {
+        incomingList.innerHTML = '<p>لا توجد تغييرات في المخزون</p>';
+        return;
+      }
+      
+      let html = '<table class="changes-table"><tr><th>اسم الدواء</th><th>الكمية الواردة</th><th>المخزون السابق</th><th>المخزون الجديد</th><th>سعر الوحدة</th><th>نوع الدواء</th></tr>';
+      
+      incomingChanges.forEach(change => {
+        html += `<tr>
+          <td>${change.name}</td>
+          <td>${change.incoming}</td>
+          <td>${change.oldStock}</td>
+          <td>${change.newStock}</td>
+          <td>${change.unitPrice ? change.unitPrice.toFixed(2) + ' ج' : '-'}</td>
+          <td>${change.drugType || 'أساسي'}</td>
+        </tr>`;
+      });
+      
+      html += '</table>';
+      incomingList.innerHTML = html;
+    }
+
+    function saveUpdatedInventory() {
+      if (!updatedInventoryData || !confirm("هل تريد حفظ المخزون المحدث كبيانات أساسية جديدة؟ سيتم استبدال البيانات الحالية.")) {
+        return;
+      }
+      
+      baseInventoryData = updatedInventoryData;
+      localStorage.setItem('pharmacyBaseData', JSON.stringify(baseInventoryData));
+      updatedInventoryData = null;
+      
+      // إخفاء أقسام التغييرات
+      document.getElementById('saveUpdatedBtn').style.display = 'none';
+      document.getElementById('changesSummary').style.display = 'none';
+      document.getElementById('incomingSummary').style.display = 'none';
+      
+      // تحديث بطاقات الملخص
+      updateSummaryCards();
+      
+      showNotification("تم حفظ المخزون المحدث بنجاح كبيانات أساسية جديدة", true);
+    }
+
+    function generateReport() {
+      const dataToUse = updatedInventoryData || baseInventoryData;
+      if (!dataToUse) {
+        showNotification("لا توجد بيانات أساسية محفوظة", false, 'error');
+        return;
+      }
+      
+      // استخدام البيانات الأساسية لتوليد التقرير
+      calculateIndicators(JSON.parse(JSON.stringify(dataToUse)));
+    }
+
+    function calculateIndicators(data) {
+      try {
+        const today = new Date();
+        document.getElementById('reportDate').textContent = 'تاريخ التقرير: ' + today.toLocaleDateString('ar-EG');
+
+        // تجميع الأدوية حسب المادة الفعالة والتركيز ونوع الوحدة
+        const groups = {};
+        zeroStockItems = [];
+        
+        // المرحلة الأولى: تجميع البيانات حسب المجموعة
+        data.forEach(item => {
+          const activeIngredient = item['المادة الفعالة'] || 'غير معروف';
+          const concentration = item['التركيز'] || 'غير معروف';
+          const unitType = item['نوع الوحدة'] || 'وحدة';
+          const groupKey = `${activeIngredient}|${concentration}|${unitType}`;
+          
+          if (!groups[groupKey]) {
+            groups[groupKey] = {
+              activeIngredient: activeIngredient,
+              concentration: concentration,
+              unitType: unitType,
+              drugType: item['نوع الدواء'] || 'أساسي',
+              consumptionValues: [],
+              monthlyTotals: {},
+              items: [],
+              totalStock: 0,
+              totalDailyConsumption: 0,
+              totalLastIncoming: 0,
+              zeroStockCount: 0
+            };
+          }
+          
+          // جمع قيم الاستهلاك السابقة
+          const fixedKeys = ['اسم الدواء', 'نوع الدواء', 'المخزون الحالي', 'المادة الفعالة', 
+                            'التركيز', 'نوع الوحدة', 'سعر الوحدة', 'المنصرف اليومي', 'الوارد اليومي'];
+          
+          for (const key in item) {
+            if (fixedKeys.includes(key)) continue;
+            
+            const value = parseFloat(item[key]) || 0; // إصلاح: تعيين 0 للقيم غير الصحيحة
+            if (!isNaN(value)) {
+              // تجميع الاستهلاك الشهري
+              if (!groups[groupKey].monthlyTotals[key]) {
+                groups[groupKey].monthlyTotals[key] = 0;
+              }
+              groups[groupKey].monthlyTotals[key] += value;
+            }
+          }
+          
+          groups[groupKey].items.push(item);
+        });
+        
+        // المرحلة الثانية: حساب المؤشرات لكل مجموعة
+        for (const key in groups) {
+          const group = groups[key];
+          
+          // تحويل المجاميع الشهرية إلى مصفوفة وترتيبها
+          const monthlyValues = Object.values(group.monthlyTotals);
+          monthlyValues.sort((a, b) => b - a);
+          const top3 = monthlyValues.slice(0, 3);
+          group.avgConsumption = top3.length > 0 ? top3.reduce((a, b) => a + b, 0) / top3.length : 0;
+          
+          // حساب الحدود حسب نوع الدواء
+          if (group.drugType === 'حيوي') {
+            group.sufficiencyThreshold = group.avgConsumption * 3;
+            group.safetyThreshold = group.avgConsumption * 2;
+            group.dangerThreshold = group.avgConsumption * 1;
+          } else if (group.drugType === 'أساسي') {
+            group.sufficiencyThreshold = group.avgConsumption * 2.5;
+            group.safetyThreshold = group.avgConsumption * 1.5;
+            group.dangerThreshold = group.avgConsumption * 1;
+          } else if (group.drugType === 'غير أساسي') {
+            group.sufficiencyThreshold = group.avgConsumption * 2;
+            group.safetyThreshold = group.avgConsumption * 1.5;
+            group.dangerThreshold = group.avgConsumption * 1;
+          }
+          
+          // حساب إجمالي المخزون والاستهلاك اليومي والوارد للمجموعة
+          group.totalStock = 0;
+          group.totalDailyConsumption = 0;
+          group.totalLastIncoming = 0;
+          group.zeroStockCount = 0;
+          
+          group.items.forEach(item => {
+            const stock = parseFloat(item['المخزون الحالي']) || 0;
+            group.totalStock += stock;
+            group.totalDailyConsumption += parseFloat(item['المنصرف اليومي']) || 0;
+            group.totalLastIncoming += parseFloat(item['الوارد اليومي']) || 0;
+            
+            // حساب الأصناف المنتهية (مخزون صفر) فقط
+            if (stock <= 0) {
+              group.zeroStockCount++;
+              // تخزين الأصناف المنتهية
+              zeroStockItems.push({
+                name: item['اسم الدواء'] || 'غير معروف',
+                activeIngredient: group.activeIngredient,
+                concentration: group.concentration,
+                unitType: group.unitType,
+                drugType: group.drugType
+              });
+            }
+          });
+          
+          // حساب الكمية المطلوبة للمجموعة بناءً على إجمالي المخزون
+          group.quantityNeeded = Math.max(0, group.sufficiencyThreshold - group.totalStock);
+        }
+        
+        // المرحلة الثالثة: توليد نتائج التحليل
+        analysisResults = [];
+        
+        for (const key in groups) {
+          const group = groups[key];
+          
+          // إضافة صف المجموعة
+          analysisResults.push({
+            isGroup: true,
+            name: `${group.activeIngredient} (${group.concentration})`,
+            activeIngredient: group.activeIngredient,
+            concentration: group.concentration,
+            unitType: group.unitType,
+            top3: Object.values(group.monthlyTotals).sort((a,b) => b - a).slice(0, 3),
+            avg: group.avgConsumption.toFixed(2),
+            safe: group.safetyThreshold.toFixed(2),
+            danger: group.dangerThreshold.toFixed(2),
+            sufficiency: group.sufficiencyThreshold.toFixed(2),
+            stock: group.totalStock.toFixed(2),
+            dailyConsumption: group.totalDailyConsumption.toFixed(2),
+            lastIncoming: group.totalLastIncoming.toFixed(2),
+            remaining: group.totalStock.toFixed(2),
+            quantityNeeded: group.quantityNeeded.toFixed(2),
+            unitPrice: '',
+            daysExpected: (group.avgConsumption > 0) ? (group.totalStock / (group.avgConsumption / 30)).toFixed(1) : 0,
+            status: group.totalStock > group.sufficiencyThreshold ? 'راكد' : 'احتياج',
+            drugType: group.drugType,
+            rowClass: group.totalStock <= group.dangerThreshold ? 'danger' : 
+                     (group.totalStock <= group.safetyThreshold ? 'warning' : 'safe'),
+            itemCount: group.items.length,
+            zeroStockCount: group.zeroStockCount
+          });
+          
+          // إضافة الأدوية الفردية في المجموعة
+          group.items.forEach(item => {
+            const currentStock = parseFloat(item['المخزون الحالي']) || 0;
+            const dailyConsumption = parseFloat(item['المنصرف اليومي']) || 0;
+            const lastIncoming = parseFloat(item['الوارد اليومي']) || 0;
+            const unitPrice = parseFloat(item['سعر الوحدة']) || 0;
+            
+            // تحديد فئة الصف بناءً على المخزون
+            let rowClass = 'safe';
+            if (currentStock <= group.dangerThreshold) {
+              rowClass = 'danger';
+            } else if (currentStock <= group.safetyThreshold) {
+              rowClass = 'warning';
+            }
+            
+            // إضافة فئة خاصة للأصناف المنتهية
+            if (currentStock <= 0) {
+              rowClass += ' zero-stock';
+            }
+            
+            analysisResults.push({
+              isGroup: false,
+              name: item['اسم الدواء'] || 'غير معروف',
+              activeIngredient: group.activeIngredient,
+              concentration: group.concentration,
+              unitType: group.unitType,
+              top3: Object.values(group.monthlyTotals).sort((a,b) => b - a).slice(0, 3),
+              avg: group.avgConsumption.toFixed(2),
+              safe: group.safetyThreshold.toFixed(2),
+              danger: group.dangerThreshold.toFixed(2),
+              sufficiency: group.sufficiencyThreshold.toFixed(2),
+              stock: currentStock,
+              dailyConsumption: dailyConsumption,
+              lastIncoming: lastIncoming,
+              remaining: currentStock.toFixed(2),
+              quantityNeeded: '',
+              unitPrice: unitPrice.toFixed(2),
+              daysExpected: (group.avgConsumption > 0) ? (currentStock / (group.avgConsumption / 30)).toFixed(1) : 0,
+              status: currentStock > group.sufficiencyThreshold ? 'راكد' : 'احتياج',
+              drugType: group.drugType,
+              rowClass: rowClass
+            });
+          });
+        }
+
+        document.getElementById('downloadBtn').disabled = false;
+        document.getElementById('downloadShortageBtn').disabled = false;
+        document.getElementById('downloadZeroStockBtn').disabled = false;
+        displayResults(analysisResults);
+        initSearch();
+        generateShortageReport();
+      } catch (e) {
+        showNotification(`حدث خطأ في توليد التقرير: ${e.message}`, false, 'error');
+        console.error(e);
+      }
+    }
+
+    function displayResults(results) {
+      const tbody = document.querySelector('#resultsTable tbody');
+      tbody.innerHTML = '';
+
+      let criticalItems = [];
+      let warningItems = [];
+      let zeroStockItemsCount = 0;
+
+      // إضافة صف المجموعات فقط إذا كان العرض مجمعاً
+      const showGroups = currentView === 'grouped';
+
+      results.forEach(item => {
+        // في العرض التفصيلي، نتخطى صف المجموعة
+        if (item.isGroup && currentView === 'detailed') {
+          return; // تخطي صف المجموعة في العرض التفصيلي
+        }
+
+        const row = document.createElement('tr');
+        
+        if (item.isGroup && showGroups) {
+          // صف المجموعة
+          row.className = 'group-header-row';
+          
+          // تحديد فئة أيام المتوقع
+          let daysClass = 'days-safe';
+          if (item.daysExpected < 15) daysClass = 'days-danger';
+          else if (item.daysExpected < 30) daysClass = 'days-warning';
+          
+          // تحديد فئة حالة الصنف
+          const statusClass = item.status === 'احتياج' ? 'status-need' : 'status-idle';
+          
+          // تحديد لون نوع الدواء
+          let typeClass = '';
+          let typeText = '';
+          if (item.drugType === 'حيوي') {
+            typeClass = 'vital';
+            typeText = 'حيوي';
+          } else if (item.drugType === 'أساسي') {
+            typeClass = 'essential';
+            typeText = 'أساسي';
+          } else {
+            typeClass = 'nonessential';
+            typeText = 'غير أساسي';
+          }
+          
+          row.innerHTML = `
+            <td colspan="17" style="text-align: center; font-weight: bold;">
+              <i class="fas fa-layer-group"></i> ${item.name}
+              <span class="drug-type-badge ${typeClass}">${typeText}</span>
+              <span class="group-info">عدد الأصناف: ${item.itemCount}</span>
+              <span class="group-info">الأصناف المنتهية: <span class="zero-stock-badge">${item.zeroStockCount}</span></span>
+              <span class="group-info">إجمالي المخزون: ${item.stock}</span>
+            </td>
+          `;
+          tbody.appendChild(row);
+        } 
+        
+        if (!item.isGroup || !showGroups) {
+          // صف الدواء الفردي
+          row.className = item.rowClass;
+          
+          // تحديد فئة أيام المتوقع
+          let daysClass = 'days-safe';
+          if (item.daysExpected < 15) daysClass = 'days-danger';
+          else if (item.daysExpected < 30) daysClass = 'days-warning';
+          
+          // تحديد فئة حالة الصنف
+          const statusClass = item.status === 'احتياج' ? 'status-need' : 'status-idle';
+          
+          // تحديد لون نوع الدواء
+          let typeClass = '';
+          let typeText = '';
+          if (item.drugType === 'حيوي') {
+            typeClass = 'vital';
+            typeText = 'حيوي';
+          } else if (item.drugType === 'أساسي') {
+            typeClass = 'essential';
+            typeText = 'أساسي';
+          } else {
+            typeClass = 'nonessential';
+            typeText = 'غير أساسي';
+          }
+          
+          // تمييز الأصناف المنتهية
+          if (item.rowClass.includes('zero-stock')) {
+            zeroStockItemsCount++;
+          }
+          
+          row.innerHTML = `
+            <td>${item.name} <span class="drug-type-badge ${typeClass}">${typeText}</span></td>
+            <td>${item.activeIngredient}</td>
+            <td>${item.concentration}</td>
+            <td><span class="unit-badge">${item.unitType}</span></td>
+            <td>${item.top3.join(', ')}</td>
+            <td>${item.avg}</td>
+            <td>${item.safe}</td>
+            <td>${item.danger}</td>
+            <td>${item.sufficiency}</td>
+            <td>${item.stock}</td>
+            <td>${item.dailyConsumption}</td>
+            <td>${item.lastIncoming}</td>
+            <td>${item.remaining}</td>
+            <td>
+              ${item.isGroup ? 
+                `<span class="required-quantity">${item.quantityNeeded}</span>` : 
+                ''}
+            </td>
+            <td>
+              ${!item.isGroup ? 
+                `<span class="price-badge">${item.unitPrice} ج</span>
+                 <i class="fas fa-history price-history-icon" onclick="showPriceHistory('${item.name}')"></i>` : 
+                ''}
+            </td>
+            <td><span class="days-indicator ${daysClass}">${item.daysExpected} يوم</span></td>
+            <td class="${statusClass}">${item.status}</td>
+          `;
+          tbody.appendChild(row);
+
+          if (item.rowClass.includes('danger') && !item.isGroup) {
+            criticalItems.push(item);
+          } else if (item.rowClass.includes('warning') && !item.isGroup) {
+            warningItems.push(item);
+          }
+        }
+      });
+
+      displayAlerts(criticalItems, warningItems, zeroStockItemsCount);
+    }
+    
+    function generateShortageReport() {
+      shortageReport = [];
+      
+      if (!analysisResults || analysisResults.length === 0) return;
+      
+      // تجميع الأدوية حسب المادة الفعالة والتركيز والوحدة
+      const groups = {};
+      
+      analysisResults.forEach(item => {
+        if (item.isGroup) {
+          const groupKey = `${item.activeIngredient}|${item.concentration}|${item.unitType}`;
+          
+          // التحقق من وجود بدائل في نفس المجموعة
+          let hasAlternative = false;
+          analysisResults.forEach(i => {
+            if (!i.isGroup && 
+                i.activeIngredient === item.activeIngredient &&
+                i.concentration === item.concentration &&
+                i.unitType === item.unitType &&
+                parseFloat(i.remaining) > parseFloat(item.danger)) {
+              hasAlternative = true;
+            }
+          });
+          
+          if (!groups[groupKey] && parseFloat(item.remaining) <= parseFloat(item.danger) && !hasAlternative) {
+            groups[groupKey] = {
+              activeIngredient: item.activeIngredient,
+              concentration: item.concentration,
+              unitType: item.unitType,
+              remaining: parseFloat(item.remaining),
+              danger: parseFloat(item.danger),
+              safety: parseFloat(item.safe),
+              sufficiency: parseFloat(item.sufficiency),
+              avgConsumption: parseFloat(item.avg),
+              alternatives: [],
+              quantityNeeded: parseFloat(item.quantityNeeded)
+            };
+          }
+        }
+      });
+      
+      // البحث عن بدائل في نفس المجموعة
+      analysisResults.forEach(item => {
+        if (!item.isGroup) {
+          const groupKey = `${item.activeIngredient}|${item.concentration}|${item.unitType}`;
+          
+          if (groups[groupKey] && parseFloat(item.remaining) > groups[groupKey].danger) {
+            groups[groupKey].alternatives.push({
+              name: item.name,
+              remaining: parseFloat(item.remaining)
+            });
+          }
+        }
+      });
+      
+      // تحويل المجموعات إلى تقرير النواقص
+      for (const key in groups) {
+        shortageReport.push(groups[key]);
+      }
+      
+      displayShortageReport();
+    }
+    
+    function displayShortageReport() {
+      const shortageList = document.getElementById('shortageList');
+      shortageList.innerHTML = '';
+      
+      if (shortageReport.length === 0) {
+        shortageList.innerHTML = '<div class="alert alert-success">لا توجد نواقص حرجة في المخزون</div>';
+        return;
+      }
+      
+      shortageReport.forEach(item => {
+        const shortageItem = document.createElement('div');
+        shortageItem.className = 'shortage-item';
+        
+        // حساب عدد الأيام المتوقع تغطيتها
+        const daysExpected = (item.avgConsumption > 0) ? (item.remaining / (item.avgConsumption / 30)).toFixed(1) : 0;
+        
+        shortageItem.innerHTML = `
+          <h4>
+            <i class="fas fa-pills"></i> ${item.activeIngredient} (تركيز ${item.concentration}, ${item.unitType})
+          </h4>
+          <p style="font-weight: bold; color: ${item.remaining <= item.danger ? 'var(--danger-color)' : 'var(--warning-color)'}">
+            <i class="fas fa-box"></i> الكمية الإجمالية المتبقية: ${item.remaining.toFixed(2)} | 
+            <i class="fas fa-exclamation-circle"></i> حد الخطر: ${item.danger.toFixed(2)} |
+            <i class="fas fa-shield-alt"></i> حد الأمان: ${item.safety.toFixed(2)} |
+            <i class="fas fa-check-circle"></i> حد الكفاية: ${item.sufficiency.toFixed(2)} |
+            <i class="fas fa-calendar-day"></i> الأيام المتوقعة: ${daysExpected} يوم
+          </p>
+          <p><i class="fas fa-calculator"></i> <strong>الكمية المطلوبة:</strong> 
+            <span class="required-quantity">${item.quantityNeeded.toFixed(2)}</span>
+          </p>`;
+        
+        if (item.alternatives.length > 0) {
+          shortageItem.innerHTML += `
+            <p><i class="fas fa-exchange-alt"></i> البدائل المتاحة:</p>
+            <div class="alternatives-list">`;
+          
+          item.alternatives.forEach(alt => {
+            shortageItem.innerHTML += `
+              <div class="alternative-item">
+                <i class="fas fa-capsules"></i> ${alt.name}
+                <span style="margin-right: 15px; font-weight: bold;">الكمية المتاحة: ${alt.remaining.toFixed(2)}</span>
+              </div>`;
+          });
+          
+          shortageItem.innerHTML += '</div>';
+        } else {
+          shortageItem.innerHTML += `
+            <p class="status-need">
+              <i class="fas fa-exclamation-triangle"></i> لا يوجد بدائل متاحة في المخزون
+            </p>`;
+        }
+        
+        shortageList.appendChild(shortageItem);
+      });
+    }
+
+    function displayAlerts(criticalItems, warningItems, zeroStockItemsCount) {
+      const alertsDiv = document.getElementById('alerts');
+      alertsDiv.innerHTML = '';
+
+      if (criticalItems.length > 0) {
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger';
+        alert.innerHTML = `
+          <i class="fas fa-exclamation-circle fa-2x"></i>
+          <div>
+            <h3>🚨 ${criticalItems.length} أدوية في حالة خطر</h3>
+            <p>هذه الأدوية وصلت إلى مستويات حرجة تحت حد الخطر وتحتاج إلى إعادة تخزين فورية</p>
+          </div>
+        `;
+        alertsDiv.appendChild(alert);
+      }
+
+      if (warningItems.length > 0) {
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-warning';
+        alert.innerHTML = `
+          <i class="fas fa-exclamation-triangle fa-2x"></i>
+          <div>
+            <h3>⚠️ ${warningItems.length} أدوية تحت حد الأمان</h3>
+            <p>هذه الأدوية تحت مستوى الأمان وتحتاج إلى مراقبة وإعادة تخزين قريبة</p>
+          </div>
+        `;
+        alertsDiv.appendChild(alert);
+      }
+
+      if (zeroStockItemsCount > 0) {
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-zero';
+        alert.innerHTML = `
+          <i class="fas fa-exclamation fa-2x"></i>
+          <div>
+            <h3>❗ ${zeroStockItemsCount} أدوية منتهية من المخزون</h3>
+            <p>هذه الأدوية نفذت من المخزون وتحتاج إلى إعادة تخزين فورية</p>
+          </div>
+        `;
+        alertsDiv.appendChild(alert);
+      }
+
+      if (criticalItems.length === 0 && warningItems.length === 0 && zeroStockItemsCount === 0) {
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success';
+        alert.innerHTML = `
+          <i class="fas fa-check-circle fa-2x"></i>
+          <div>
+            <h3>✅ جميع الأدوية في وضع آمن</h3>
+            <p>مستويات المخزون الحالية لجميع الأدوية فوق حد الأمان</p>
+          </div>
+        `;
+        alertsDiv.appendChild(alert);
+      }
+    }
+
+    function downloadExcel() {
+      if (!analysisResults || analysisResults.length === 0) {
+        showNotification("لا توجد بيانات متاحة للتنزيل.", false, 'error');
+        return;
+      }
+
+      const wsData = [
+        ["اسم الدواء", "المادة الفعالة", "التركيز", "نوع الوحدة", "أعلى 3 شهور", 
+         "متوسط الاستهلاك", "حد الأمان", "حد الخطر", "حد الكفاية", "المخزون الحالي", 
+         "المنصرف اليومي", "الوارد اليومي", "الكمية المتبقية", "الكمية المطلوبة", 
+         "سعر الوحدة", "عدد الأيام المتوقع", "حالة الصنف"],
+        ...analysisResults.filter(item => !item.isGroup).map(item => [
+          item.name, 
+          item.activeIngredient,
+          item.concentration,
+          item.unitType,
+          item.top3.join(', '), 
+          item.avg, 
+          item.safe, 
+          item.danger,
+          item.sufficiency, 
+          item.stock, 
+          item.dailyConsumption,
+          item.lastIncoming,
+          item.remaining,
+          item.quantityNeeded, 
+          item.unitPrice, 
+          item.daysExpected,
+          item.status
+        ])
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      XLSX.utils.book_append_sheet(wb, ws, "تحليل المخزون");
+
+      const today = new Date().toISOString().split('T')[0];
+      const filename = `تحليل_المخزون_${today}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+    }
+    
+    function downloadShortageExcel() {
+      if (shortageReport.length === 0) {
+        showNotification("لا توجد نواقص حرجة للتنزيل.", false, 'warning');
+        return;
+      }
+
+      const wsData = [
+        ["المادة الفعالة", "التركيز", "نوع الوحدة", "الكمية المتبقية", "حد الخطر", "حد الأمان", "حد الكفاية", "عدد الأيام المتوقع", "الكمية المطلوبة", "البدائل"]
+      ];
+      
+      shortageReport.forEach(item => {
+        // حساب عدد الأيام المتوقع تغطيتها
+        const daysExpected = (item.avgConsumption > 0) ? (item.remaining / (item.avgConsumption / 30)).toFixed(1) : 0;
+        
+        // تجميع البدائل في سلسلة نصية
+        let alternativesText = "";
+        if (item.alternatives.length > 0) {
+          alternativesText = item.alternatives.map(alt => 
+            `${alt.name}: ${alt.remaining.toFixed(2)}`
+          ).join('، ');
+        } else {
+          alternativesText = "لا يوجد بدائل متاحة";
+        }
+        
+        wsData.push([
+          item.activeIngredient,
+          item.concentration,
+          item.unitType,
+          item.remaining.toFixed(2),
+          item.danger.toFixed(2),
+          item.safety.toFixed(2),
+          item.sufficiency.toFixed(2),
+          daysExpected,
+          item.quantityNeeded.toFixed(2),
+          alternativesText
+        ]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      XLSX.utils.book_append_sheet(wb, ws, "تقرير النواقص");
+
+      const today = new Date().toISOString().split('T')[0];
+      const filename = `تقرير_النواقص_${today}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+    }
+    
+    function downloadZeroStockExcel() {
+      if (zeroStockItems.length === 0) {
+        showNotification("لا توجد أصناف منتهية للتنزيل.", false, 'warning');
+        return;
+      }
+
+      const wsData = [
+        ["اسم الدواء", "المادة الفعالة", "التركيز", "نوع الوحدة", "نوع الدواء"]
+      ];
+      
+      zeroStockItems.forEach(item => {
+        wsData.push([
+          item.name,
+          item.activeIngredient,
+          item.concentration,
+          item.unitType,
+          item.drugType
+        ]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      XLSX.utils.book_append_sheet(wb, ws, "الأصناف المنتهية");
+
+      const today = new Date().toISOString().split('T')[0];
+      const filename = `الأصناف_المنتهية_${today}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+    }
+
+    function resetData() {
+      if (confirm("هل أنت متأكد من رغبتك في مسح جميع البيانات المحفوظة؟")) {
+        localStorage.removeItem('pharmacyBaseData');
+        localStorage.removeItem('pharmacyPriceHistory');
+        localStorage.removeItem('pharmacyMonthlyData');
+        baseInventoryData = null;
+        updatedInventoryData = null;
+        consumptionChanges = [];
+        incomingChanges = [];
+        priceHistory = {};
+        analysisResults = [];
+        zeroStockItems = [];
+        monthlyData = {};
+        document.querySelector('#resultsTable tbody').innerHTML = '';
+        document.getElementById('alerts').innerHTML = '';
+        document.getElementById('inventoryFileName').textContent = '';
+        document.getElementById('consumptionFileName').textContent = '';
+        document.getElementById('incomingFileName').textContent = '';
+        document.getElementById('saveUpdatedBtn').style.display = 'none';
+        document.getElementById('changesSummary').style.display = 'none';
+        document.getElementById('incomingSummary').style.display = 'none';
+        document.getElementById('shortageList').innerHTML = '';
+        updateSummaryCards();
+        showNotification("تم مسح جميع البيانات بنجاح", true);
+      }
+    }
+
+    function initSearch() {
+      const searchInput = document.getElementById('medicineSearch');
+      const suggestionsContainer = document.getElementById('searchSuggestions');
+
+      function searchMedicines(query) {
+        if (!query) return [];
+        
+        const regexPattern = query
+          .replace(/%/g, '.')
+          .replace(/\s+/g, '.*');
+          
+        const regex = new RegExp(regexPattern, 'i');
+        return medicineNames.filter(name => regex.test(name));
+      }
+
+      function showSuggestions(results, query) {
+        suggestionsContainer.innerHTML = '';
+        
+        if (results.length === 0) {
+          suggestionsContainer.innerHTML = '<div class="no-results">لا توجد نتائج</div>';
+          suggestionsContainer.style.display = 'block';
+          return;
+        }
+        
+        results.forEach(medicine => {
+          const suggestionItem = document.createElement('div');
+          suggestionItem.className = 'suggestion-item';
+          
+          const highlightedText = medicine.replace(
+            new RegExp(query.replace(/%/g, '.'), 'gi'),
+            match => `<span class="highlight">${match}</span>`
+          );
+          
+          suggestionItem.innerHTML = `<i class="fas fa-pills"></i> ${highlightedText}`;
+          suggestionItem.addEventListener('click', () => {
+            searchInput.value = medicine;
+            filterTable(medicine);
+            suggestionsContainer.style.display = 'none';
+          });
+          
+          suggestionsContainer.appendChild(suggestionItem);
+        });
+        
+        suggestionsContainer.style.display = 'block';
+      }
+
+      function filterTable(searchTerm) {
+        const rows = document.querySelectorAll('#resultsTable tr');
+        const regex = new RegExp(searchTerm.replace(/%/g, '.'), 'i');
+        
+        rows.forEach((row, index) => {
+          if (index === 0) return; // تخطي رأس الجدول
+          
+          if (row.classList.contains('group-header-row')) {
+            // معالجة صفوف المجموعات بشكل مختلف
+            const groupName = row.cells[0].textContent;
+            row.style.display = regex.test(groupName) ? '' : 'none';
+          } else {
+            const medicineName = row.cells[0].textContent;
+            row.style.display = regex.test(medicineName) ? '' : 'none';
+          }
+        });
+      }
+
+      searchInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        const results = searchMedicines(query);
+        showSuggestions(results, query);
+      });
+
+      document.addEventListener('click', function(e) {
+        if (e.target !== searchInput) {
+          suggestionsContainer.style.display = 'none';
+        }
+      });
+
+      searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          filterTable(this.value);
+          suggestionsContainer.style.display = 'none';
+        }
+      });
+    }
+    
+    function showPriceHistory(drugName) {
+      const history = priceHistory[drugName];
+      const modal = document.getElementById('priceHistoryModal');
+      const title = document.getElementById('priceHistoryTitle');
+      const content = document.getElementById('priceHistoryContent');
+      
+      title.textContent = `سجل أسعار: ${drugName}`;
+      content.innerHTML = '';
+      
+      if (!history || history.length === 0) {
+        content.innerHTML = '<p>لا يوجد سجل أسعار لهذا الدواء</p>';
+      } else {
+        content.innerHTML = '<div class="price-history">';
+        
+        history.forEach(entry => {
+          content.innerHTML += `
+            <div class="price-entry">
+              <span>${entry.date}</span>
+              <span>${entry.price.toFixed(2)} ج</span>
+            </div>
+          `;
+        });
+        
+        content.innerHTML += '</div>';
+      }
+      
+      modal.style.display = 'flex';
+    }
+    
+    function closePriceHistory() {
+      document.getElementById('priceHistoryModal').style.display = 'none';
+    }
+    
+    // إغلاق النافذة عند النقر خارجها
+    window.onclick = function(event) {
+      const modal = document.getElementById('priceHistoryModal');
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>
