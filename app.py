@@ -1,4 +1,4 @@
-# app.py - التطبيق الرئيسي المدمج مع جميع الصفحات وتوقيت القاهرة
+# app.py — لوحة تحليل البيانات الصحية مع توقيت القاهرة وتنسيق فوسفوري
 import streamlit as st
 import pandas as pd
 import gspread
@@ -9,524 +9,504 @@ from datetime import datetime, timedelta
 import numpy as np
 from collections.abc import Mapping
 import time
-import pytz
-import streamlit.components.v1 as components
-import os
-import google.generativeai as genai
-from io import BytesIO
+import pytz  # مكتبة جديدة للتوقيت
 
-# إعدادات الصفحة
+# ============ إعداد الصفحة والستايل ============
 st.set_page_config(
-    page_title="AMANY - لوحة التحكم الشاملة",
-    layout="wide",
-    page_icon="🌍"
+    page_title="AMANY - لوحة التحكم المتقدمة", 
+    layout="wide", 
+    page_icon="🏥"
 )
 
-# توقيت القاهرة
+# ============ توقيت القاهرة ============
 def get_cairo_time():
+    """الحصول على الوقت الحالي بتوقيت القاهرة"""
     cairo_tz = pytz.timezone('Africa/Cairo')
     return datetime.now(cairo_tz)
 
-# CSS مخصص
+# ============ التنسيق الفوسفوري ============
 st.markdown("""
 <style>
 :root {
-    --green: #39ff14;
-    --bg-dark: #2e5ae8;
-    --royal-blue: #4169E1;
+    --neon-green: #39ff14;
+    --neon-blue: #00ffff;
+    --neon-pink: #ff00ff;
+    --neon-orange: #ff8c00;
+    --neon-yellow: #ffff00;
+    --bg-dark: #0b1020;
+    --card-bg: #152240;
+    --border-glow: #5a7ff0;
 }
 
+/* الخلفية الرئيسية */
+.stApp {
+    background: linear-gradient(135deg, #0b1020, #1a1f38);
+}
+
+/* الهيدر الرئيسي */
 .main-header {
+    background: linear-gradient(90deg, #152240, #2c4ba0);
+    padding: 25px;
     text-align: center;
-    color: #39ff14;
-    padding: 20px;
-    background: linear-gradient(135deg, #2e5ae8, #4169E1);
-    border-radius: 10px;
+    border-radius: 15px;
     margin-bottom: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border: 2px solid var(--neon-green);
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
 }
 
+.main-title {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--neon-green);
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.7);
+    letter-spacing: 3px;
+    margin: 0;
+}
+
+.sub-title {
+    font-size: 20px;
+    color: var(--neon-blue);
+    margin: 10px 0;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+}
+
+/* شريط الوقت */
 .time-display {
+    background: rgba(21, 34, 64, 0.8);
+    padding: 15px;
     text-align: center;
-    font-size: 16px;
-    font-weight: bold;
-    color: #39ff14;
-    background-color: #2b2b2b;
-    padding: 10px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    border: 1px solid #39ff14;
+    border-radius: 10px;
+    margin: 15px 0;
+    border: 1px solid var(--neon-green);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
 }
 
-.sidebar-header {
-    color: #39ff14;
+.time-text {
+    font-size: 24px;
     font-weight: bold;
-    font-size: 18px;
-    margin-bottom: 15px;
+    color: var(--neon-green);
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
+}
+
+/* الكروت */
+.kpi-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 10px 0;
+    border: 1px solid var(--border-glow);
+    box-shadow: 0 0 15px rgba(90, 127, 240, 0.2);
+    text-align: center;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+}
+
+.kpi-title {
+    color: var(--neon-blue) !important;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+}
+
+.kpi-value {
+    color: var(--neon-green) !important;
+    font-size: 32px;
+    font-weight: 900;
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}
+
+/* الشريط الجانبي */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1a1f38, #0b1020) !important;
+    border-right: 2px solid var(--neon-green) !important;
+}
+
+[data-testid="stSidebar"] * {
+    color: #ffffff !important;
 }
 
 .sidebar-section {
-    background-color: #2c4ba0;
-    padding: 10px;
-    border-radius: 8px;
+    background: rgba(21, 34, 64, 0.8);
+    padding: 15px;
+    border-radius: 10px;
     margin: 10px 0;
-    border: 1px solid #5a7ff0;
+    border: 1px solid var(--neon-blue);
 }
 
-/* تنسيق عام للتطبيق */
-.stApp {
-    background-color: var(--royal-blue);
-}
-
+/* العناوين */
 h1, h2, h3, h4, h5, h6 {
-    color: #39ff14 !important;
+    color: var(--neon-green) !important;
+    text-shadow: 0 0 5px rgba(57, 255, 20, 0.3);
 }
 
-/* تنسيق الشريط الجانبي */
-[data-testid="stSidebar"] {
-    background-color: #1a1a2e;
-}
-
-[data-testid="stSidebar"] .st-emotion-cache-16txtl3 {
-    color: #f0f8ff !important;
-}
-
-/* تنسيق البيانات */
-.stDataFrame {
-    background-color: #2c4ba0 !important;
-}
-
-/* تنسيق الأزرار */
+/* الأزرار */
 .stButton button {
-    background-color: #39ff14 !important;
+    background: linear-gradient(45deg, var(--neon-green), var(--neon-blue)) !important;
     color: #000 !important;
     font-weight: bold;
+    border: none !important;
+    border-radius: 8px !important;
+    transition: all 0.3s ease;
+}
+
+.stButton button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- الوظائف المشتركة ---
-SHEET_NAMES = { 
-    "services": "PHC action sheet", 
-    "financial": "Financial & KPI", 
-    "daily": "Dashboard-phc" 
-}
+# ============ معرف ملف البيانات ============
+PHC_SPREADSHEET_ID = "1ptbPIJ9Z0k92SFcXNqAeC61SXNpamCm-dXPb97cPT_4"
 
-@st.cache_resource(ttl="2h")
-def connect_to_gsheet():
+# ============ الدوال المساعدة للاتصال ============
+def with_backoff(func, *args, **kwargs):
+    """إعادة المحاولة مع فترات انتظار"""
+    for delay in [0.5, 1, 2, 4, 8]:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if "429" in str(e) or "Quota" in str(e):
+                time.sleep(delay)
+                continue
+            raise
+    raise RuntimeError("فشلت جميع محاولات إعادة الاتصال")
+
+@st.cache_resource(ttl=7200)
+def get_spreadsheet(spreadsheet_id: str):
+    """الاتصال بملف Google Sheets"""
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
         client = gspread.authorize(creds)
-        return client
+        return with_backoff(client.open_by_key, spreadsheet_id)
     except Exception as e:
-        st.error(f"❌ خطأ في الاتصال بـ Google API: {e}")
+        st.error(f"❌ خطأ في الاتصال: {e}")
         return None
 
-@st.cache_data(ttl="5m")
-def get_data_from_worksheet(_client, sheet_name, worksheet_name):
+@st.cache_data(ttl=900)
+def list_facility_sheets(spreadsheet_id: str):
+    """الحصول على قائمة المنشآت"""
     try:
-        spreadsheet = _client.open(sheet_name)
-        worksheet = spreadsheet.worksheet(worksheet_name.strip())
-        all_values = worksheet.get_all_values()
-        if not all_values: 
-            return pd.DataFrame()
-        header = [str(h).strip() for h in all_values[0]]
-        cols = pd.Series(header)
-        for dup in cols[cols.duplicated()].unique(): 
-            cols[cols[cols == dup].index.values.tolist()] = [
-                dup + '.' + str(i) if i != 0 else dup 
-                for i in range(sum(cols == dup))
-            ]
-        df = pd.DataFrame(all_values[1:], columns=cols)
-        return df
+        sh = get_spreadsheet(spreadsheet_id)
+        if not sh:
+            return []
+        titles = [ws.title for ws in with_backoff(sh.worksheets)]
+        # استبعاد الأوراق غير المرغوبة
+        blacklist = {"config", "config!", "readme", "financial", "kpi", "test"}
+        return [t for t in titles if t.strip().lower() not in blacklist]
     except Exception as e:
-        st.error(f"❌ حدث خطأ أثناء قراءة البيانات من '{sheet_name}' ({worksheet_name}): {e}")
+        st.error(f"❌ خطأ في قراءة القائمة: {e}")
+        return []
+
+@st.cache_data(ttl=900)
+def get_df_from_sheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
+    """قراءة البيانات من الورقة"""
+    try:
+        sh = get_spreadsheet(spreadsheet_id)
+        if not sh:
+            return pd.DataFrame()
+        ws = with_backoff(sh.worksheet, worksheet_name.strip())
+        vals = with_backoff(ws.get_all_values)
+        
+        if not vals:
+            return pd.DataFrame()
+            
+        # معالجة الرأس
+        header = [str(h).strip() for h in vals[0]]
+        cols = pd.Series(header, dtype=str)
+        
+        # معالجة الأعمدة المكررة
+        for dup in cols[cols.duplicated()].unique():
+            idxs = list(cols[cols == dup].index)
+            for i, idx in enumerate(idxs):
+                cols.iloc[idx] = dup if i == 0 else f"{dup}.{i}"
+                
+        return pd.DataFrame(vals[1:], columns=cols)
+    except Exception as e:
+        st.error(f"❌ خطأ في قراءة البيانات: {e}")
         return pd.DataFrame()
 
-def style_dataframe(df):
-    if df.empty: 
-        return df
-    numeric_cols = df.select_dtypes(include=np.number).columns
-    format_dict = {col: "{:,.0f}" for col in numeric_cols}
-    return df.style.format(format_dict) \
-                   .applymap(lambda _: 'background-color: #2c4ba0; color: #f0f8ff;', 
-                           subset=pd.IndexSlice[:, [df.columns[0]]]) \
-                   .applymap(lambda _: 'background-color: #2c4ba0; color: #f0f8ff;', 
-                           subset=pd.IndexSlice[[df.index[0]], :]) \
-                   .set_properties(**{'font-size': '14pt', 'border': '1px solid #5a7ff0'})
+# ============ الألوان الفوسفورية للرسوم ============
+NEON_COLORS = [
+    "#39ff14",  # أخضر فوسفوري
+    "#00ffff",  # أزرق فوسفوري
+    "#ff00ff",  # وردي فوسفوري
+    "#ffff00",  # أصفر فوسفوري
+    "#ff8c00",  # برتقالي فوسفوري
+    "#ff1493",  # وردي غامق
+]
 
-# --- الشريط الجانبي ---
-with st.sidebar:
-    st.markdown('<p class="sidebar-header">🌍 قائمة التنقل</p>', unsafe_allow_html=True)
-    
-    page = st.selectbox(
-        "اختر الصفحة:",
-        [
-            "🏠 الرئيسية",
-            "📊 المؤشرات الشهرية", 
-            "📦 نظام المخزون الدوائي",
-            "💰 البيانات المالية",
-            "🧠 المساعد الذكي ASK AMANY"
-        ]
+# ============ تنسيق الرسوم البيانية ============
+def apply_neon_layout(fig, title: str = "", height: int = 600):
+    """تطبيق التنسيق الفوسفوري على الرسم البياني"""
+    fig.update_layout(
+        title=dict(
+            text=title,
+            font=dict(size=28, color="#39ff14", family="Arial, bold"),
+            x=0.5,
+            xanchor="center"
+        ),
+        height=height,
+        paper_bgcolor="#0b1020",
+        plot_bgcolor="#0b1020",
+        font=dict(color="#ffffff", size=16, family="Arial"),
+        legend=dict(
+            font=dict(size=16, color="#ffffff"),
+            bgcolor="rgba(0,0,0,0.7)",
+            bordercolor="#39ff14",
+            borderwidth=1
+        ),
+        xaxis=dict(
+            gridcolor="#233355",
+            zerolinecolor="#39ff14",
+            title_font=dict(size=20, color="#00ffff"),
+            tickfont=dict(size=16, color="#ffffff"),
+            linecolor="#39ff14",
+            linewidth=2
+        ),
+        yaxis=dict(
+            gridcolor="#233355",
+            zerolinecolor="#39ff14",
+            title_font=dict(size=20, color="#00ffff"),
+            tickfont=dict(size=16, color="#ffffff"),
+            linecolor="#39ff14",
+            linewidth=2
+        ),
+        margin=dict(l=50, r=30, t=80, b=50),
+        hoverlabel=dict(
+            bgcolor="#152240",
+            font_size=16,
+            font_color="#ffffff"
+        )
     )
-    
-    # عرض الوقت في الشريط الجانبي
-    cairo_time = get_cairo_time()
-    st.markdown(f"""
-    <div class='sidebar-section'>
-        <div style='text-align: center;'>
-            <p style='color: #39ff14; margin: 0; font-weight: bold;'>⏰ توقيت القاهرة</p>
-            <p style='color: white; margin: 0; font-size: 14px;'>{cairo_time.strftime("%Y-%m-%d")}</p>
-            <p style='color: white; margin: 0; font-size: 16px; font-weight: bold;'>{cairo_time.strftime("%H:%M:%S")}</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #666; font-size: 12px;'>
-        AMANY Dashboard v2.0<br>
-        توقيت القاهرة
-    </div>
-    """, unsafe_allow_html=True)
+    return fig
 
-# --- محتوى الصفحات ---
-
-if page == "🏠 الرئيسية":
-    st.markdown('<div class="main-header"><h1>🌐 لوحة التحكم الشاملة - AMANY</h1></div>', unsafe_allow_html=True)
-    
-    # عرض الوقت الحالي بتوقيت القاهرة
-    current_time = get_cairo_time()
-    st.markdown(f'''
-    <div class="time-display">
-        ⏰ الوقت الحالي بتوقيت القاهرة: {current_time.strftime("%Y-%m-%d %H:%M:%S")}
-    </div>
-    ''', unsafe_allow_html=True)
-    
-    # أقسام الصفحة الرئيسية
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown("""
-        <div style='background: #2c4ba0; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #39ff14;'>
-            <h3 style='color: #39ff14;'>📊 المؤشرات</h3>
-            <p style='color: white;'>عرض المؤشرات الشهرية والأداء</p>
-        </div>
-        """, unsafe_allow_html=True)
+# ============ تحليل البيانات ============
+def style_dataframe(df: pd.DataFrame):
+    """تنسيق الجداول"""
+    if df.empty:
+        return df
         
-    with col2:
-        st.markdown("""
-        <div style='background: #2c4ba0; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #39ff14;'>
-            <h3 style='color: #39ff14;'>📦 المخزون</h3>
-            <p style='color: white;'>إدارة وتتبع المخزون الدوائي</p>
-        </div>
-        """, unsafe_allow_html=True)
+    # تحويل الأعمدة الرقمية
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ""), errors="ignore")
         
-    with col3:
-        st.markdown("""
-        <div style='background: #2c4ba0; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #39ff14;'>
-            <h3 style='color: #39ff14;'>💰 المالية</h3>
-            <p style='color: white;'>التقارير والتحليلات المالية</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col4:
-        st.markdown("""
-        <div style='background: #2c4ba0; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #39ff14;'>
-            <h3 style='color: #39ff14;'>🧠 المساعد</h3>
-            <p style='color: white;'>الذكاء الاصطناعي للتحليل</p>
-        </div>
-        """, unsafe_allow_html=True)
+    numeric_cols = df.select_dtypes(include=np.number).columns
+    fmt = {col: "{:,.0f}" for col in numeric_cols}
     
-    st.markdown("---")
-    
-    # إحصائيات سريعة
-    st.subheader("📈 نظرة سريعة")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("عدد الصفحات المتاحة", "5", "مدمجة بالكامل")
-    with col2:
-        st.metric("التحديث الزمني", "تلقائي", "توقيت القاهرة")
-    with col3:
-        st.metric("حالة النظام", "🟢 نشط", "مستقر")
+    return df.style.format(fmt).set_properties(**{
+        "font-size": "16px", 
+        "border": "1px solid #5a7ff0",
+        "background-color": "#152240",
+        "color": "#ffffff"
+    })
 
-elif page == "📊 المؤشرات الشهرية":
-    st.markdown('<div class="main-header"><h1>📊 تحليل المؤشرات الشهرية</h1></div>', unsafe_allow_html=True)
+def robust_parse_date(series: pd.Series) -> pd.Series:
+    """تحليل التواريخ بطرق متعددة"""
+    s = series.astype(object)
     
-    # عرض الوقت
-    current_time = get_cairo_time()
-    st.markdown(f'''
-    <div class="time-display">
-        ⏰ الوقت الحالي بتوقيت القاهرة: {current_time.strftime("%Y-%m-%d %H:%M:%S")}
-    </div>
-    ''', unsafe_allow_html=True)
-    
-    # محتوى المؤشرات الشهرية
-    g_client = connect_to_gsheet()
-    if not g_client:
-        st.stop()
-
-    try:
-        services_spreadsheet = g_client.open(SHEET_NAMES["services"])
-        facility_names = sorted([ws.title.strip() for ws in services_spreadsheet.worksheets()])
-        
-        if not facility_names:
-            st.warning("لم يتم العثور على صفحات منشآت في ملف المؤشرات الشهرية.")
-            st.stop()
-
-        summary_sheet_name = facility_names[0]
-        display_options = [summary_sheet_name] + [name for name in facility_names if name != summary_sheet_name]
-        
-        selected_facility = st.selectbox("اختر العرض (الإجماليات أو منشأة محددة):", options=display_options)
-
-        if selected_facility:
-            st.markdown(f'<div style="color: #39ff14; font-weight: bold; text-align: center; margin: 20px 0; font-size: 18px;">عرض بيانات: {selected_facility}</div>', unsafe_allow_html=True)
-            services_df = get_data_from_worksheet(g_client, SHEET_NAMES["services"], selected_facility)
+    def map_to_ts(v):
+        try:
+            if isinstance(v, Mapping):
+                y = v.get("year") or v.get("Year")
+                m = v.get("month") or v.get("Month")
+                d = v.get("day") or v.get("Day") or 1
+                if y and m:
+                    return pd.Timestamp(int(y), int(m), int(d))
+            return v
+        except Exception:
+            return v
             
-            if services_df is not None and not services_df.empty:
-                st.dataframe(style_dataframe(services_df), use_container_width=True, height=600)
-            else:
-                st.info(f"لا توجد بيانات لعرضها لـ '{selected_facility}'.")
-
-    except Exception as e:
-        st.error(f"❌ حدث خطأ غير متوقع: {e}")
-
-elif page == "📦 نظام المخزون الدوائي":
-    st.markdown('<div class="main-header"><h1>💊 نظام متابعة المخزون الدوائي</h1></div>', unsafe_allow_html=True)
+    s = s.map(map_to_ts)
+    dt = pd.to_datetime(s, errors="coerce", dayfirst=True, infer_datetime_format=True)
     
-    # عرض الوقت
-    current_time = get_cairo_time()
-    st.markdown(f'''
-    <div class="time-display">
-        ⏰ الوقت الحالي بتوقيت القاهرة: {current_time.strftime("%Y-%m-%d %H:%M:%S")}
+    # محاولة تنسيقات إضافية
+    mask_na = dt.isna()
+    if mask_na.any():
+        s2 = pd.Series(s[mask_na]).astype(str).str.strip()
+        m1 = pd.to_datetime(s2, format="%m/%Y", errors="coerce")
+        m2 = pd.to_datetime(s2, format="%m-%Y", errors="coerce")
+        m3 = pd.to_datetime(s2, format="%Y-%m", errors="coerce")
+        merged = m1.fillna(m2).fillna(m3)
+        dt.loc[mask_na] = merged
+        
+    return dt
+
+# ============ عرض لوحة المنشأة ============
+def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
+    """عرض لوحة البيانات للمنشأة"""
+    if df.empty:
+        st.info("📭 لا توجد بيانات لعرضها.")
+        return
+        
+    # معالجة العمود الأول كتاريخ
+    date_col = df.columns[0]
+    df = df.copy()
+    df[date_col] = robust_parse_date(df[date_col])
+    df = df.dropna(subset=[date_col])
+    
+    if df.empty:
+        st.info("📅 لا توجد تواريخ صالحة للعرض.")
+        return
+
+    # تحويل الأعمدة الرقمية
+    for col in df.columns:
+        if col != date_col:
+            df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+
+    # الهيدر
+    st.markdown(f"""
+    <div class="main-header">
+        <div class="main-title">📊 {facility_name}</div>
+        <div class="sub-title">لوحة تحليل البيانات التفصيلية</div>
     </div>
-    ''', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+    # المؤشرات الرئيسية
+    st.markdown("### 📈 المؤشرات الرئيسية")
+    numeric_cols = df.select_dtypes(include=np.number).columns
     
-    # محتوى المخزون
-    HTML_FILE_PATH = 'inventory_template.html'
+    if len(numeric_cols) > 0:
+        # عرض أهم 6 مؤشرات
+        totals = df[numeric_cols].sum().sort_values(ascending=False).head(6)
+        cols = st.columns(3)
+        
+        for i, (kpi, total) in enumerate(totals.items()):
+            with cols[i % 3]:
+                st.markdown(f'''
+                <div class="kpi-card">
+                    <div class="kpi-title">{kpi}</div>
+                    <div class="kpi-value">{int(total):,}</div>
+                </div>
+                ''', unsafe_allow_html=True)
+    else:
+        st.info("🔢 لا توجد أعمدة رقمية للعرض.")
+
+    # الرسوم البيانية
+    st.markdown("### 📊 الرسوم البيانية")
     
-    if not os.path.exists(HTML_FILE_PATH):
-        st.error(f"خطأ: لم يتم العثور على ملف القالب '{HTML_FILE_PATH}'.")
-        st.info("يرجى التأكد من أن الملف موجود في المجلد الرئيسي.")
-        
-        # عرض بديل في حالة عدم وجود الملف
-        st.subheader("📋 نظام إدارة المخزون البديل")
-        st.info("""
-        **ميزات نظام المخزون:**
-        - تتبع الأدوية والمستلزمات
-        - تنبيهات نفاد الكميات
-        - إدارة الصلاحية
-        - تقارير المخزون
-        """)
-        
-        # نموذج مبسط لإدارة المخزون
+    if len(numeric_cols) >= 2:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("إضافة صنف جديد")
-            with st.form("add_item"):
-                item_name = st.text_input("اسم الصنف")
-                quantity = st.number_input("الكمية", min_value=0)
-                min_stock = st.number_input("الحد الأدنى", min_value=0)
-                submitted = st.form_submit_button("إضافة")
-                if submitted:
-                    st.success(f"تم إضافة {item_name} بنجاح")
-        
+            # رسم بياني دائري لأعلى 5 قيم
+            top_5 = df[numeric_cols].sum().nlargest(5)
+            if len(top_5) > 0:
+                fig_pie = px.pie(
+                    values=top_5.values, 
+                    names=top_5.index,
+                    title="توزيع أعلى 5 مؤشرات",
+                    color_discrete_sequence=NEON_COLORS
+                )
+                fig_pie.update_traces(
+                    textposition="inside",
+                    textinfo="percent+label",
+                    textfont=dict(size=14, color="#ffffff"),
+                    marker=dict(line=dict(color="#ffffff", width=2))
+                )
+                apply_neon_layout(fig_pie, "توزيع المؤشرات")
+                st.plotly_chart(fig_pie, use_container_width=True)
+
         with col2:
-            st.subheader("المخزون الحالي")
-            sample_data = {
-                "الصنف": ["باراسيتامول", "كحول طبي", "شاش معقم"],
-                "الكمية": [150, 80, 200],
-                "الحد الأدنى": [50, 30, 100],
-                "الحالة": ["🟢 كافي", "🟢 كافي", "🟢 كافي"]
-            }
-            st.dataframe(pd.DataFrame(sample_data))
-        
+            # رسم بياني عمودي
+            if len(numeric_cols) > 0:
+                selected_col = st.selectbox("اختر المؤشر:", numeric_cols, key="bar_chart")
+                fig_bar = px.bar(
+                    df, 
+                    x=date_col, 
+                    y=selected_col,
+                    title=f"تطور {selected_col}",
+                    color_discrete_sequence=[NEON_COLORS[1]]
+                )
+                apply_neon_layout(fig_bar, f"تطور {selected_col}")
+                st.plotly_chart(fig_bar, use_container_width=True)
     else:
-        try:
-            with open(HTML_FILE_PATH, 'r', encoding='utf-8') as f:
-                html_code = f.read()
-            components.html(html_code, height=1600, scrolling=True)
-        except Exception as e:
-            st.error(f"حدث خطأ أثناء قراءة ملف HTML: {e}")
+        st.info("📉 تحتاج إلى عمودين رقميين على الأقل للرسوم البيانية.")
 
-elif page == "💰 البيانات المالية":
-    st.markdown('<div class="main-header"><h1>💰 لوحة البيانات المالية</h1></div>', unsafe_allow_html=True)
+    # الجدول التفصيلي
+    st.markdown("### 📋 البيانات التفصيلية")
+    st.dataframe(style_dataframe(df), use_container_width=True, height=400)
+
+# ============ الواجهة الرئيسية ============
+def main():
+    """الواجهة الرئيسية للتطبيق"""
     
-    # عرض الوقت
-    current_time = get_cairo_time()
-    st.markdown(f'''
-    <div class="time-display">
-        ⏰ الوقت الحالي بتوقيت القاهرة: {current_time.strftime("%Y-%m-%d %H:%M:%S")}
+    # الهيدر الرئيسي
+    st.markdown("""
+    <div class="main-header">
+        <div class="main-title">🏥 AMANY</div>
+        <div class="sub-title">Advanced Medical Analytics Networking Yielding</div>
+        <div class="sub-title">منصة التحليل المتقدم للرعاية الصحية الأولية</div>
     </div>
-    ''', unsafe_allow_html=True)
-    
-    # محتوى البيانات المالية المبسط
-    st.subheader("📈 التحليل المالي")
-    
-    try:
-        g_client = connect_to_gsheet()
-        if g_client:
-            financial_df = get_data_from_worksheet(g_client, SHEET_NAMES["financial"], "Financial Data")
-            
-            if not financial_df.empty:
-                st.success("✅ تم تحميل البيانات المالية بنجاح")
-                
-                # عرض البيانات
-                tab1, tab2, tab3 = st.tabs(["البيانات الخام", "الإحصائيات", "الرسوم البيانية"])
-                
-                with tab1:
-                    st.dataframe(financial_df, use_container_width=True)
-                
-                with tab2:
-                    # إحصائيات أساسية
-                    numeric_cols = financial_df.select_dtypes(include=[np.number]).columns
-                    if len(numeric_cols) > 0:
-                        stats_df = financial_df[numeric_cols].describe()
-                        st.dataframe(stats_df)
-                
-                with tab3:
-                    if len(numeric_cols) >= 2:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            x_axis = st.selectbox("المحور X", numeric_cols, key="x_fin")
-                            y_axis = st.selectbox("المحور Y", numeric_cols, key="y_fin")
-                        
-                        fig = px.scatter(financial_df, x=x_axis, y=y_axis, title="العلاقة بين المتغيرات المالية")
-                        st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("لا توجد بيانات مالية متاحة حالياً.")
+    """, unsafe_allow_html=True)
+
+    # عرض وقت القاهرة
+    cairo_time = get_cairo_time()
+    st.markdown(f"""
+    <div class="time-display">
+        <div class="time-text">⏰ توقيت القاهرة: {cairo_time.strftime('%Y-%m-%d %H:%M:%S')}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # الشريط الجانبي
+    with st.sidebar:
+        st.markdown("""
+        <div class="sidebar-section">
+            <h3>🎛️ لوحة التحكم</h3>
+            <p>اختر طريقة عرض البيانات</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        app_mode = st.radio(
+            "طريقة العرض:",
+            ["الإجماليات", "عرض المنشآت", "مقارنة المنشآت"],
+            index=0
+        )
+
+    # المحتوى الرئيسي
+    if app_mode == "الإجماليات":
+        st.header("📊 لوحة التحكم الرئيسية")
+        df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
+        display_facility_dashboard(df_main, "الإجماليات العامة")
+        
+    elif app_mode == "عرض المنشآت":
+        st.header("🏭 عرض البيانات حسب المنشأة")
+        
+        # قائمة المنشآت
+        facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
+        if facilities:
+            selected_facility = st.selectbox("اختر المنشأة:", facilities)
+            if selected_facility:
+                df_facility = get_df_from_sheet(PHC_SPREADSHEET_ID, selected_facility)
+                display_facility_dashboard(df_facility, selected_facility)
         else:
-            st.warning("تعذر الاتصال بقاعدة البيانات.")
+            st.error("❌ لا توجد منشآت متاحة")
             
-    except Exception as e:
-        st.error(f"حدث خطأ في تحميل البيانات المالية: {e}")
-    
-    # مؤشرات أداء مالية
-    st.subheader("📊 مؤشرات الأداء الرئيسية")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("إجمالي الإيرادات", "2,450,000 جنيه", "+12%")
-    with col2:
-        st.metric("إجمالي المصروفات", "1,890,000 جنيه", "+8%")
-    with col3:
-        st.metric("صافي الربح", "560,000 جنيه", "+15%")
-    with col4:
-        st.metric("هامش الربح", "22.8%", "+2.3%")
+    elif app_mode == "مقارنة المنشآت":
+        st.header("⚖️ مقارنة المنشآت")
+        st.info("🔧 هذه الميزة قيد التطوير...")
+        # يمكن إضافة كود المقارنة هنا لاحقاً
 
-elif page == "🧠 المساعد الذكي ASK AMANY":
-    st.markdown('<div class="main-header"><h1>🧠 المساعد الذكي ASK AMANY</h1></div>', unsafe_allow_html=True)
-    
-    # عرض الوقت
-    current_time = get_cairo_time()
-    st.markdown(f'''
-    <div class="time-display">
-        ⏰ الوقت الحالي بتوقيت القاهرة: {current_time.strftime("%Y-%m-%d %H:%M:%S")}
+    # التذييل
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #666; padding: 20px;'>
+        <p>⏰ يتم عرض الوقت حسب توقيت القاهرة</p>
+        <p>🏥 AMANY Dashboard v3.0 - منصة التحليل المتقدم للرعاية الصحية</p>
+        <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية</p>
     </div>
-    ''', unsafe_allow_html=True)
-    
-    # محتوى المساعد الذكي المبسط
-    st.subheader("🤖 مساعد الذكاء الاصطناعي لتحليل البيانات")
-    
-    # تحذير إذا لم يكن API key متوفراً
-    if "GOOGLE_API_KEY" not in st.secrets:
-        st.warning("""
-        ⚠️ **المساعد الذكي يتطلب إعداد مفتاح API**
-        
-        لإعداد المساعد الذكي:
-        1. احصل على مفتاح Google AI API
-        2. أضفه في إعدادات Streamlit Cloud كـ secret
-        3. سيصبح المساعد متاحاً تلقائياً
-        """)
-        
-        st.info("""
-        **الميزات المتاحة بعد الإعداد:**
-        - تحليل البيانات تلقائياً
-        - إجابات ذكية على الأسئلة
-        - توليد تقارير مخصصة
-        - تحليل الاتجاهات والأنماط
-        """)
-        
-        # نموذج محاكاة للمساعد
-        st.subheader("💬 محاكاة المحادثة")
-        user_question = st.text_input("اسأل عن بياناتك...", placeholder="مثال: ما هي أعلى الإيرادات في الشهر الماضي؟")
-        
-        if user_question:
-            st.info("""
-            **رد المساعد (محاكاة):**
-            بعد إعداد مفتاح API، سأتمكن من تحليل بياناتك الفعلية والإجابة على أسئلتك بدقة.
-            
-            حالياً، يمكنني مساعدتك في:
-            - 📊 تحليل المؤشرات الشهرية
-            - 📦 مراجعة المخزون
-            - 💰 تحليل البيانات المالية
-            """)
-    else:
-        # إذا كان API key متوفراً
-        try:
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            model = genai.GenerativeModel('gemini-pro')
-            
-            st.success("✅ المساعد الذكي جاهز للعمل!")
-            
-            # واجهة المحادثة
-            if "chat_history" not in st.session_state:
-                st.session_state.chat_history = []
-            
-            # عرض سجل المحادثة
-            for message in st.session_state.chat_history:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-            
-            # إدخال المستخدم
-            if prompt := st.chat_input("اسأل AMANY عن بياناتك..."):
-                # إضافة سؤال المستخدم
-                st.session_state.chat_history.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-                
-                # توليد الرد
-                with st.chat_message("assistant"):
-                    with st.spinner("AMANY يفكر..."):
-                        try:
-                            response = model.generate_content(f"""
-                            أنت مساعد ذكي اسمه AMANY متخصص في تحليل بيانات الرعاية الصحية.
-                            أجِب على سؤال المستخدم بطريقة مفيدة وواضحة.
-                            
-                            سؤال المستخدم: {prompt}
-                            
-                            ركز على تقديم إجابات عملية ومفيدة تتعلق بتحليل البيانات، المؤشرات، التقارير، والإحصائيات.
-                            """)
-                            response_text = response.text
-                            st.markdown(response_text)
-                            st.session_state.chat_history.append({"role": "assistant", "content": response_text})
-                        except Exception as e:
-                            error_msg = f"عذراً، حدث خطأ في المعالجة: {e}"
-                            st.error(error_msg)
-                            st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
-        
-        except Exception as e:
-            st.error(f"خطأ في إعداد المساعد الذكي: {e}")
+    """, unsafe_allow_html=True)
 
-# تحديث تلقائي للصفحة
-st.markdown("---")
-col1, col2 = st.columns([3, 1])
-with col2:
-    if st.button("🔄 تحديث البيانات"):
-        st.rerun()
-
-# تذييل الصفحة
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #f0f8ff; padding: 20px;'>
-    <p>⏰ يتم عرض الوقت حسب توقيت القاهرة | 🌍 AMANY Dashboard v2.0</p>
-    <p style='font-size: 12px; color: #ccc;'>© 2024 الهيئة العامة للرعاية الصحية - إدارة الرعاية الأولية فرع جنوب سيناء</p>
-</div>
-""", unsafe_allow_html=True)
-
-# Auto-refresh every 5 minutes
-time.sleep(300)
-st.rerun()
+# تشغيل التطبيق
+if __name__ == "__main__":
+    main()
