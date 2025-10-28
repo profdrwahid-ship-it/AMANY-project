@@ -258,7 +258,8 @@ def with_backoff(func, *args, **kwargs):
     raise RuntimeError("فشلت جميع محاولات إعادة الاتصال")
 
 # ============ معرف ملف البيانات ============
-PHC_SPREADSHEET_ID = "1ptbPIJ9Z0k92SFcXNqAeC61SXNpamCm-dXPb97cPT_4"
+# استخدام Spreadsheet ID من الكود الأصلي
+SPREADSHEET_ID = "1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y"
 
 # ============ الهيدر الرئيسي ============
 _now = now_cairo().strftime("%Y-%m-%d %H:%M:%S")
@@ -314,6 +315,20 @@ def get_all_values(spreadsheet_id: str, worksheet_name: str):
         return with_backoff(ws.get_all_values)
     except Exception as e:
         st.error(f"❌ خطأ في قراءة الورقة '{worksheet_name}': {e}")
+        return []
+
+@st.cache_data(ttl=900)
+def read_totals_list(spreadsheet_id: str):
+    try:
+        vals = get_all_values(spreadsheet_id, CONFIG_SHEET_NAME)
+        if len(vals) < 2:
+            return []
+        header = [str(h).strip() for h in vals[0]]
+        cfg = pd.DataFrame(vals[1:], columns=header)
+        if TOTALS_CONFIG_COLUMN not in cfg.columns:
+            return []
+        return cfg[TOTALS_CONFIG_COLUMN].dropna().astype(str).str.strip().tolist()
+    except Exception:
         return []
 
 def make_headers_unique(headers: list) -> list:
@@ -436,7 +451,7 @@ st.markdown("## 💡 لوحة البيانات المالية")
 
 # تحميل قائمة الأوراق
 try:
-    ws_list = list_worksheets(PHC_SPREADSHEET_ID)
+    ws_list = list_worksheets(SPREADSHEET_ID)
 except Exception as e:
     st.error(f"تعذر فتح الملف: {e}")
     st.stop()
@@ -449,7 +464,7 @@ if not ws_list:
 sheet_name = st.selectbox("اختر الورقة:", ws_list)
 
 # تحميل البيانات
-df_full, header_raw, rows_raw = get_df(PHC_SPREADSHEET_ID, sheet_name)
+df_full, header_raw, rows_raw = get_df(SPREADSHEET_ID, sheet_name)
 if df_full.empty:
     st.warning(f"لا بيانات صالحة في الورقة: {sheet_name}")
     st.stop()
@@ -469,7 +484,7 @@ pm_end = prev_month_end(now_dt)
 tab_raw, tab_proc = st.tabs(["📄 Raw as-is", "📊 Processed + KPIs"])
 
 with tab_raw:
-    all_vals = get_all_values(PHC_SPREADSHEET_ID, sheet_name)
+    all_vals = get_all_values(SPREADSHEET_ID, sheet_name)
     row1 = all_vals[0] if len(all_vals) > 0 else []
     row2 = all_vals[1] if len(all_vals) > 1 else []
     row3 = all_vals[2] if len(all_vals) > 2 else []
@@ -508,17 +523,7 @@ with tab_proc:
     all_cols = [c for c in df_f.columns if c != "Month"]
     
     # استخدام Config sheet للحصول على التوتالات
-    try:
-        totals_cfg = []
-        config_vals = get_all_values(PHC_SPREADSHEET_ID, CONFIG_SHEET_NAME)
-        if len(config_vals) > 1:
-            header = [str(h).strip() for h in config_vals[0]]
-            cfg = pd.DataFrame(config_vals[1:], columns=header)
-            if TOTALS_CONFIG_COLUMN in cfg.columns:
-                totals_cfg = cfg[TOTALS_CONFIG_COLUMN].dropna().astype(str).str.strip().tolist()
-    except Exception:
-        totals_cfg = []
-    
+    totals_cfg = read_totals_list(SPREADSHEET_ID)
     totals = [c for c in all_cols if c in totals_cfg]
     avgs = [c for c in all_cols if c not in totals_cfg]
 
@@ -606,7 +611,7 @@ dfs_map = {}
 if sel_sheets:
     common_cols = set(available_cols)
     for ws in sel_sheets:
-        d, _, _ = get_df(PHC_SPREADSHEET_ID, ws)
+        d, _, _ = get_df(SPREADSHEET_ID, ws)
         if not d.empty:
             dfs_map[ws] = d
             common_cols &= set([c for c in d.columns if c != "Month"])
