@@ -415,204 +415,237 @@ def ai_summary(df: pd.DataFrame):
     except Exception:
         return "تعذر إنشاء الملخص."
 
-def safe_dataframe_display(df):
-    """عرض DataFrame بشكل آمن مع تنسيق الأرقام فقط"""
-    try:
-        # نسخ DataFrame لتجنب تعديل الأصل
-        display_df = df.copy()
-        
-        # تحديد الأعمدة الرقمية فقط
-        numeric_cols = display_df.select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_cols) > 0:
-            # تطبيق التنسيق على الأعمدة الرقمية فقط
-            styled_df = display_df.style.format({col: "{:,.0f}" for col in numeric_cols})
-            st.dataframe(styled_df, use_container_width=True, height=400)
-        else:
-            # إذا لم توجد أعمدة رقمية، عرض بدون تنسيق
-            st.dataframe(display_df, use_container_width=True, height=400)
-            
-    except Exception as e:
-        st.warning(f"⚠️ حدث خطأ في تنسيق البيانات: {e}")
-        # العرض بدون تنسيق كبديل آمن
-        st.dataframe(df, use_container_width=True, height=400)
+def apply_neon_legend(fig):
+    """تطبيق التنسيق الفوسفوري على الليجند فقط"""
+    fig.update_layout(
+        legend=dict(
+            font=dict(size=16, color="#39ff14", family="Arial, bold"),
+            bgcolor="rgba(21, 34, 64, 0.9)",
+            bordercolor="#00ffff",
+            borderwidth=2,
+            x=1.02,
+            y=1,
+            xanchor="left",
+            yanchor="top"
+        )
+    )
+    return fig
 
 # ============ الواجهة الرئيسية ============
-st.markdown('<div class="subtitle">💰 لوحة البيانات المالية المتقدمة</div>', unsafe_allow_html=True)
+st.markdown("## 💡 لوحة البيانات المالية")
 
 # تحميل قائمة الأوراق
 try:
     ws_list = list_worksheets(PHC_SPREADSHEET_ID)
 except Exception as e:
-    st.error(f"❌ تعذر فتح الملف: {e}")
+    st.error(f"تعذر فتح الملف: {e}")
     st.stop()
 
 if not ws_list:
-    st.warning("📭 لا توجد أوراق في الملف.")
+    st.warning("لا توجد أوراق في الملف.")
     st.stop()
 
 # اختيار الورقة
-sheet_name = st.selectbox("📋 اختر الورقة:", ws_list)
+sheet_name = st.selectbox("اختر الورقة:", ws_list)
 
 # تحميل البيانات
 df_full, header_raw, rows_raw = get_df(PHC_SPREADSHEET_ID, sheet_name)
 if df_full.empty:
-    st.warning(f"⚠️ لا بيانات صالحة في الورقة: {sheet_name}")
+    st.warning(f"لا بيانات صالحة في الورقة: {sheet_name}")
     st.stop()
 
 # فلتر التواريخ
 min_d, max_d = df_full.index.min().date(), df_full.index.max().date()
-start_d, end_d = st.date_input("📅 النطاق الزمني:", value=(min_d, max_d), min_value=min_d, max_value=max_d)
+start_d, end_d = st.date_input("النطاق الزمني:", value=(min_d, max_d), min_value=min_d, max_value=max_d)
 df_f = df_full.loc[pd.to_datetime(start_d):pd.to_datetime(end_d)].copy()
 if df_f.empty:
-    st.warning("⚠️ لا توجد بيانات ضمن النطاق الزمني المحدد.")
+    st.warning("لا توجد بيانات ضمن النطاق الزمني المحدد.")
     st.stop()
 
 now_dt = now_cairo()
 pm_end = prev_month_end(now_dt)
 
-# التبويبات الرئيسية
-tab1, tab2, tab3, tab4 = st.tabs(["📊 البيانات المعالجة", "📈 التحليلات", "🔄 المقارنات", "📤 التصدير"])
+# التبويبات الرئيسية - نفس التبويبات الأصلية
+tab_raw, tab_proc = st.tabs(["📄 Raw as-is", "📊 Processed + KPIs"])
 
-with tab1:
-    st.markdown("#### 📋 البيانات المعالجة والمؤشرات")
-    st.caption(f"📊 الحسابات أدناه حتى نهاية: {pm_end.strftime('%b %Y')}")
-    
-    # الملخص الذكي
+with tab_raw:
+    all_vals = get_all_values(PHC_SPREADSHEET_ID, sheet_name)
+    row1 = all_vals[0] if len(all_vals) > 0 else []
+    row2 = all_vals[1] if len(all_vals) > 1 else []
+    row3 = all_vals[2] if len(all_vals) > 2 else []
+    safe_cols = resolve_headers_merged(row1, row2, row3)
+    st.dataframe(pd.DataFrame(rows_raw, columns=safe_cols))
+
+with tab_proc:
+    st.caption(f"الحسابات أدناه حتى نهاية: {pm_end.strftime('%b %Y')}")
     kpi_base = df_f.loc[:pm_end] if not df_f.loc[:pm_end].empty else df_f.copy()
-    with st.expander("🤖 الملخص الذكي", expanded=True):
-        st.info(ai_summary(kpi_base))
-    
-    # عرض البيانات بشكل آمن
+    st.info(ai_summary(kpi_base))
+
     display_df = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
     if display_df.empty:
         display_df = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
-    display_df = display_df[["Month"] + [c for c in display_df.columns if c not in ["Month", "Date"]]]
+    display_df = display_df[["Month"] + [c for c in display_df.columns if c != "Month"]]
     
-    # استخدام الدالة الآمنة لعرض البيانات
-    safe_dataframe_display(display_df)
+    # إصلاح عرض البيانات - تنسيق الأعمدة الرقمية فقط
+    try:
+        # نسخ DataFrame لتجنب تعديل الأصل
+        display_df_formatted = display_df.copy()
+        
+        # تحديد الأعمدة الرقمية فقط
+        numeric_cols = display_df_formatted.select_dtypes(include=[np.number]).columns
+        
+        if len(numeric_cols) > 0:
+            # تطبيق التنسيق على الأعمدة الرقمية فقط
+            for col in numeric_cols:
+                display_df_formatted[col] = display_df_formatted[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
+        
+        st.dataframe(display_df_formatted, use_container_width=True, height=400)
+    except Exception:
+        # إذا فشل التنسيق، عرض البيانات بدون تنسيق
+        st.dataframe(display_df, use_container_width=True, height=400)
 
-with tab2:
-    st.markdown("#### 📈 تحليل المؤشرات الرئيسية")
-    
-    # مؤشرات الأداء
+    # مؤشرات الأداء - بنفس الطريقة الأصلية
     all_cols = [c for c in df_f.columns if c != "Month"]
     
-    if all_cols:
-        st.markdown("##### 📊 مؤشرات الأداء الرئيسية")
-        num_cols = min(4, len(all_cols))
-        cols_area = st.columns(num_cols)
-        
-        for i, col in enumerate(all_cols[:num_cols*2]):  # عرض حتى 8 مؤشرات
-            s = kpi_base[col]
+    # استخدام Config sheet للحصول على التوتالات
+    try:
+        totals_cfg = []
+        config_vals = get_all_values(PHC_SPREADSHEET_ID, CONFIG_SHEET_NAME)
+        if len(config_vals) > 1:
+            header = [str(h).strip() for h in config_vals[0]]
+            cfg = pd.DataFrame(config_vals[1:], columns=header)
+            if TOTALS_CONFIG_COLUMN in cfg.columns:
+                totals_cfg = cfg[TOTALS_CONFIG_COLUMN].dropna().astype(str).str.strip().tolist()
+    except Exception:
+        totals_cfg = []
+    
+    totals = [c for c in all_cols if c in totals_cfg]
+    avgs = [c for c in all_cols if c not in totals_cfg]
+
+    df_kpi = kpi_base
+
+    def render_kpi_cards(cols, title, is_avg):
+        if not cols:
+            return
+        st.subheader(title)
+        cols_area = st.columns(4)
+        for i, c in enumerate(cols):
+            s = df_kpi[c]
             if s.empty:
                 continue
-                
-            with cols_area[i % num_cols]:
-                current_val = s.iloc[-1]
-                avg_val = s.mean()
-                growth = ((current_val - avg_val) / avg_val * 100) if avg_val != 0 else 0
-                
-                st.markdown(f'''
-                <div class="kpi-card">
-                    <div class="kpi-title">{col}</div>
-                    <div class="kpi-value">{current_val:,.0f}</div>
-                    <div style="color: {'#39ff14' if growth >= 0 else '#ff4136'}; font-size: 14px; margin-top: 8px;">
-                        {f'+{growth:.1f}%' if growth >= 0 else f'{growth:.1f}%'}
-                    </div>
+            main_val = s.mean() if is_avg else s.sum()
+            max_val, min_val = s.max(), s.min()
+            try:
+                max_dt = s.idxmax().strftime('%b %Y')
+                min_dt = s.idxmin().strftime('%b %Y')
+            except Exception:
+                max_dt, min_dt = "-", "-"
+            avg_val = s.mean()
+            last_val = s.iloc[-1]
+            growth = ((last_val - avg_val) / avg_val * 100) if avg_val else 0.0
+            up = last_val > avg_val
+            arrow = "↑" if up else "↓"
+            color = "#00ff00" if up else "#ff4136"
+            highlight = ("border:2px solid #00ff00" if abs(growth) >= ALERT_THRESHOLD and up
+                         else "border:2px solid #ff4136" if abs(growth) >= ALERT_THRESHOLD else "")
+            with cols_area[i % 4]:
+                st.markdown(f"""
+                <div style="background:#111;padding:10px;border-radius:10px;{highlight}">
+                  <div style="color:#39ff14;font-weight:bold;text-align:center">{c}</div>
+                  <div style="color:#39ff14;font-size:22px;font-weight:bold;text-align:center">{main_val:,.2f}</div>
+                  <div style="color:#ddd;text-align:center">أعلى: {max_dt} ({max_val:,.2f})</div>
+                  <div style="color:#ddd;text-align:center">أقل: {min_dt} ({min_val:,.2f})</div>
                 </div>
-                ''', unsafe_allow_html=True)
+                <div style="background:#1a1a1a;padding:8px;border-radius:8px;margin-top:6px;text-align:center">
+                  <span style="color:{color};font-weight:bold">{last_val:,.2f}</span>
+                  <span style="color:{color};font-weight:bold">{arrow}</span>
+                  <span style="color:#ccc">{avg_val:,.2f}</span>
+                  <div style="color:{color}">({growth:+.1f}%)</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with tab3:
-    st.markdown("#### 🔄 مقارنة المؤشرات")
-    
-    # مقارنة داخل الورقة
-    available_cols = [c for c in df_f.columns if c != "Month"]
-    sel_cols = st.multiselect("اختر المؤشرات للمقارنة:", available_cols, 
-                            default=available_cols[:min(3, len(available_cols))])
-    
-    if sel_cols:
-        df_plot = df_f.loc[:pm_end].copy()
-        if df_plot.empty:
-            df_plot = df_f.copy()
-            
-        fig = go.Figure()
-        for col in sel_cols:
-            fig.add_trace(go.Scatter(
-                x=df_plot.index, 
-                y=df_plot[col], 
-                mode="lines+markers", 
-                name=col,
-                line=dict(width=3)
-            ))
-        
-        fig.update_layout(
-            title=f"مقارنة المؤشرات (حتى {pm_end.strftime('%b %Y')})",
-            paper_bgcolor="#0b1020",
-            plot_bgcolor="#0b1020", 
-            font_color="#ffffff",
-            height=500
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    render_kpi_cards(totals, "إجماليات (Sum)", is_avg=False)
+    render_kpi_cards(avgs, "متوسطات (Average)", is_avg=True)
 
-with tab4:
-    st.markdown("#### 📤 تصدير البيانات")
-    
-    # تحضير البيانات للتصدير
-    export_df = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
-    if export_df.empty:
-        export_df = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
-    export_df = export_df[["Month"] + [c for c in export_df.columns if c not in ["Month", "Date"]]]
-    
-    # تصدير CSV
-    csv_data = export_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 تحميل CSV",
-        data=csv_data,
-        file_name=f"financial_data_{sheet_name}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
-    
-    # تصدير Excel
-    try:
-        excel_buffer = BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            export_df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-        excel_data = excel_buffer.getvalue()
-        
-        st.download_button(
-            label="📊 تحميل Excel",
-            data=excel_data,
-            file_name=f"financial_data_{sheet_name}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-    except Exception as e:
-        st.warning(f"⚠️ تعذر إنشاء ملف Excel: {e}")
+# ============ مقارنة داخل نفس الورقة ============
+st.markdown("---")
+st.subheader("📈 مقارنة مؤشرات داخل نفس الورقة")
+available_cols = [c for c in df_f.columns if c != "Month"]
+sel_cols = st.multiselect("اختر مؤشرات:", available_cols, default=available_cols[:min(3, len(available_cols))])
+chart_type = st.radio("نوع الرسم:", ["Line", "Bar"], horizontal=True, index=0)
 
-# ============ معلومات المكتبات ============
-with st.sidebar:
-    st.markdown("### ℹ️ معلومات النظام")
-    
-    lib_status = {
-        "Kaleido (تصدير الصور)": KALEIDO_AVAILABLE,
-        "Statsmodels (تحليلات متقدمة)": STATSMODELS_AVAILABLE,
-        "Pytz (توقيت القاهرة)": PYTZ_AVAILABLE
-    }
-    
-    for lib, status in lib_status.items():
-        if status:
-            st.success(f"✅ {lib}")
+fig_same = None
+if sel_cols:
+    df_plot = df_f.loc[:pm_end].copy()
+    if df_plot.empty:
+        df_plot = df_f.copy()
+    fig_same = go.Figure()
+    for c in sel_cols:
+        if chart_type == "Line":
+            fig_same.add_trace(go.Scatter(x=df_plot.index, y=df_plot[c], mode="lines+markers", name=c))
         else:
-            st.warning(f"⚠️ {lib}")
+            fig_same.add_trace(go.Bar(x=df_plot.index, y=df_plot[c], name=c))
+    
+    # تطبيق الليجند الفوسفوري فقط
+    fig_same = apply_neon_legend(fig_same)
+    fig_same.update_layout(
+        title=f"داخل نفس الورقة (حتى {pm_end.strftime('%b %Y')})", 
+        paper_bgcolor="black", 
+        plot_bgcolor="black", 
+        font_color="white"
+    )
+    st.plotly_chart(fig_same, use_container_width=True)
+
+# ============ مقارنة بين أوراق متعددة ============
+st.markdown("---")
+st.subheader("📊 مقارنة بين أوراق متعددة")
+sel_sheets = st.multiselect("اختر أوراق:", ws_list, default=[sheet_name])
+common_kpi = None
+dfs_map = {}
+
+if sel_sheets:
+    common_cols = set(available_cols)
+    for ws in sel_sheets:
+        d, _, _ = get_df(PHC_SPREADSHEET_ID, ws)
+        if not d.empty:
+            dfs_map[ws] = d
+            common_cols &= set([c for c in d.columns if c != "Month"])
+    if common_cols:
+        common_kpi = st.selectbox("المؤشر:", sorted(list(common_cols)))
+
+fig_multi = None
+if common_kpi:
+    fig_multi = go.Figure()
+    for ws, d in dfs_map.items():
+        seg = d.loc[:pm_end].copy()
+        if seg.empty:
+            seg = d.copy()
+        fig_multi.add_trace(go.Scatter(x=seg.index, y=seg[common_kpi], mode="lines+markers", name=ws))
+    
+    # تطبيق الليجند الفوسفوري فقط
+    fig_multi = apply_neon_legend(fig_multi)
+    fig_multi.update_layout(
+        title=f"{common_kpi} عبر أوراق متعددة (حتى {pm_end.strftime('%b %Y')})", 
+        paper_bgcolor="black", 
+        plot_bgcolor="black", 
+        font_color="white"
+    )
+    st.plotly_chart(fig_multi, use_container_width=True)
+
+# ============ التصدير ============
+st.markdown("---")
+exp_all = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
+if exp_all.empty:
+    exp_all = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
+exp_all = exp_all[["Month"] + [c for c in exp_all.columns if c != "Month"]]
+st.download_button("📥 تصدير CSV", exp_all.to_csv(index=False).encode("utf-8"), f"{sheet_name}.csv", "text/csv")
 
 # ============ التذييل ============
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
     <p>⏰ يتم عرض الوقت حسب توقيت القاهرة</p>
-    <p>💰 AMANY Financial Dashboard v2.0 - منصة التحليل المالي المتقدم</p>
+    <p>💰 AMANY Financial Dashboard - منصة التحليل المالي المتقدم</p>
     <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية - فرع جنوب سيناء</p>
 </div>
 """, unsafe_allow_html=True)
