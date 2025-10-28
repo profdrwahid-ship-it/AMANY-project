@@ -7,9 +7,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
-from collections.abc import Mapping
 import time
 import pytz
+import json
 
 # ============ إعداد الصفحة والستايل ============
 st.set_page_config(
@@ -38,12 +38,10 @@ st.markdown("""
     --border-glow: #5a7ff0;
 }
 
-/* الخلفية الرئيسية */
 .stApp {
     background: linear-gradient(135deg, #0b1020, #1a1f38);
 }
 
-/* الهيدر الرئيسي */
 .main-header {
     background: linear-gradient(90deg, #152240, #2c4ba0);
     padding: 25px;
@@ -70,7 +68,6 @@ st.markdown("""
     text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
 }
 
-/* شريط الوقت */
 .time-display {
     background: rgba(21, 34, 64, 0.8);
     padding: 15px;
@@ -88,7 +85,6 @@ st.markdown("""
     text-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
 }
 
-/* الكروت */
 .kpi-card {
     background: var(--card-bg);
     border-radius: 12px;
@@ -101,12 +97,6 @@ st.markdown("""
     display: flex;
     flex-direction: column;
     justify-content: center;
-    transition: all 0.3s ease;
-}
-
-.kpi-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
 }
 
 .kpi-title {
@@ -114,17 +104,14 @@ st.markdown("""
     font-size: 16px;
     font-weight: 700;
     margin-bottom: 8px;
-    text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
 }
 
 .kpi-value {
     color: var(--neon-green) !important;
     font-size: 32px;
     font-weight: 900;
-    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
 }
 
-/* الشريط الجانبي */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1a1f38, #0b1020) !important;
     border-right: 2px solid var(--neon-green) !important;
@@ -142,28 +129,10 @@ st.markdown("""
     border: 1px solid var(--neon-blue);
 }
 
-/* العناوين */
 h1, h2, h3, h4, h5, h6 {
     color: var(--neon-green) !important;
-    text-shadow: 0 0 5px rgba(57, 255, 20, 0.3);
 }
 
-/* الأزرار */
-.stButton button {
-    background: linear-gradient(45deg, var(--neon-green), var(--neon-blue)) !important;
-    color: #000 !important;
-    font-weight: bold;
-    border: none !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease;
-}
-
-.stButton button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
-}
-
-/* تنسيق النصوص */
 .section-title {
     color: var(--neon-green) !important;
     font-size: 28px;
@@ -185,6 +154,44 @@ h1, h2, h3, h4, h5, h6 {
 </style>
 """, unsafe_allow_html=True)
 
+# ============ إصلاح مشكلة Secrets ============
+def get_google_credentials():
+    """الحصول على بيانات الاعتماد من Secrets بشكل آمن"""
+    try:
+        # الطريقة 1: إذا كان Secrets كـ JSON string
+        if 'gcp_service_account' in st.secrets:
+            if isinstance(st.secrets['gcp_service_account'], str):
+                # إذا كان نص JSON
+                return json.loads(st.secrets['gcp_service_account'])
+            elif hasattr(st.secrets['gcp_service_account'], 'to_dict'):
+                # إذا كان كائن Credentials
+                return st.secrets['gcp_service_account']
+            else:
+                # إذا كان dictionary مباشر
+                return dict(st.secrets['gcp_service_account'])
+        
+        # الطريقة 2: إذا كانت Secrets كـ sections منفصلة
+        elif all(key in st.secrets for key in ['type', 'project_id', 'private_key_id']):
+            credentials_dict = {
+                "type": st.secrets["type"],
+                "project_id": st.secrets["project_id"],
+                "private_key_id": st.secrets["private_key_id"],
+                "private_key": st.secrets["private_key"],
+                "client_email": st.secrets["client_email"],
+                "client_id": st.secrets["client_id"],
+                "auth_uri": st.secrets["auth_uri"],
+                "token_uri": st.secrets["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+            }
+            return credentials_dict
+        else:
+            st.error("❌ لم يتم العثور على إعدادات Google Service Account في Secrets")
+            return None
+    except Exception as e:
+        st.error(f"❌ خطأ في تحميل إعدادات Google: {e}")
+        return None
+
 # ============ معرف ملف البيانات ============
 PHC_SPREADSHEET_ID = "1ptbPIJ9Z0k92SFcXNqAeC61SXNpamCm-dXPb97cPT_4"
 
@@ -205,13 +212,12 @@ def with_backoff(func, *args, **kwargs):
 def get_spreadsheet(spreadsheet_id: str):
     """الاتصال بملف Google Sheets"""
     try:
-        # التحقق من وجود secrets
-        if "gcp_service_account" not in st.secrets:
-            st.error("❌ لم يتم إعداد مفاتيح الخدمة في Streamlit Cloud")
+        credentials_dict = get_google_credentials()
+        if not credentials_dict:
             return None
             
         scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
+        creds = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
         client = gspread.authorize(creds)
         return with_backoff(client.open_by_key, spreadsheet_id)
     except Exception as e:
@@ -224,9 +230,8 @@ def list_facility_sheets(spreadsheet_id: str):
     try:
         sh = get_spreadsheet(spreadsheet_id)
         if not sh:
-            st.error("❌ تعذر الاتصال بملف البيانات")
             return []
-        titles = [ws.title for ws in with_backoff(sh.worksheets)]
+        titles = [ws.title for ws in sh.worksheets()]
         # استبعاد الأوراق غير المرغوبة
         blacklist = {"config", "config!", "readme", "financial", "kpi", "test"}
         facilities = [t for t in titles if t.strip().lower() not in blacklist]
@@ -242,11 +247,10 @@ def get_df_from_sheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
         sh = get_spreadsheet(spreadsheet_id)
         if not sh:
             return pd.DataFrame()
-        ws = with_backoff(sh.worksheet, worksheet_name.strip())
-        vals = with_backoff(ws.get_all_values)
+        ws = sh.worksheet(worksheet_name.strip())
+        vals = ws.get_all_values()
         
         if not vals:
-            st.warning(f"⚠️ الورقة '{worksheet_name}' فارغة")
             return pd.DataFrame()
             
         # معالجة الرأس
@@ -260,7 +264,6 @@ def get_df_from_sheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
                 cols.iloc[idx] = dup if i == 0 else f"{dup}.{i}"
                 
         df = pd.DataFrame(vals[1:], columns=cols)
-        st.success(f"✅ تم تحميل {len(df)} صف من '{worksheet_name}'")
         return df
     except Exception as e:
         st.error(f"❌ خطأ في قراءة الورقة '{worksheet_name}': {e}")
@@ -273,7 +276,6 @@ NEON_COLORS = [
     "#ff00ff",  # وردي فوسفوري
     "#ffff00",  # أصفر فوسفوري
     "#ff8c00",  # برتقالي فوسفوري
-    "#ff1493",  # وردي غامق
 ]
 
 # ============ تنسيق الرسوم البيانية ============
@@ -282,16 +284,16 @@ def apply_neon_layout(fig, title: str = "", height: int = 600):
     fig.update_layout(
         title=dict(
             text=title,
-            font=dict(size=28, color="#39ff14", family="Arial, bold"),
+            font=dict(size=24, color="#39ff14", family="Arial, bold"),
             x=0.5,
             xanchor="center"
         ),
         height=height,
         paper_bgcolor="#0b1020",
         plot_bgcolor="#0b1020",
-        font=dict(color="#ffffff", size=16, family="Arial"),
+        font=dict(color="#ffffff", size=14),
         legend=dict(
-            font=dict(size=16, color="#ffffff"),
+            font=dict(size=14, color="#ffffff"),
             bgcolor="rgba(0,0,0,0.7)",
             bordercolor="#39ff14",
             borderwidth=1
@@ -299,78 +301,20 @@ def apply_neon_layout(fig, title: str = "", height: int = 600):
         xaxis=dict(
             gridcolor="#233355",
             zerolinecolor="#39ff14",
-            title_font=dict(size=20, color="#00ffff"),
-            tickfont=dict(size=16, color="#ffffff"),
+            title_font=dict(size=16, color="#00ffff"),
+            tickfont=dict(size=12, color="#ffffff"),
             linecolor="#39ff14",
-            linewidth=2
         ),
         yaxis=dict(
             gridcolor="#233355",
             zerolinecolor="#39ff14",
-            title_font=dict(size=20, color="#00ffff"),
-            tickfont=dict(size=16, color="#ffffff"),
+            title_font=dict(size=16, color="#00ffff"),
+            tickfont=dict(size=12, color="#ffffff"),
             linecolor="#39ff14",
-            linewidth=2
         ),
         margin=dict(l=50, r=30, t=80, b=50),
-        hoverlabel=dict(
-            bgcolor="#152240",
-            font_size=16,
-            font_color="#ffffff"
-        )
     )
     return fig
-
-# ============ تحليل البيانات ============
-def style_dataframe(df: pd.DataFrame):
-    """تنسيق الجداول"""
-    if df.empty:
-        return df
-        
-    # تحويل الأعمدة الرقمية
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ""), errors="ignore")
-        
-    numeric_cols = df.select_dtypes(include=np.number).columns
-    fmt = {col: "{:,.0f}" for col in numeric_cols}
-    
-    return df.style.format(fmt).set_properties(**{
-        "font-size": "16px", 
-        "border": "1px solid #5a7ff0",
-        "background-color": "#152240",
-        "color": "#ffffff"
-    })
-
-def robust_parse_date(series: pd.Series) -> pd.Series:
-    """تحليل التواريخ بطرق متعددة"""
-    s = series.astype(object)
-    
-    def map_to_ts(v):
-        try:
-            if isinstance(v, Mapping):
-                y = v.get("year") or v.get("Year")
-                m = v.get("month") or v.get("Month")
-                d = v.get("day") or v.get("Day") or 1
-                if y and m:
-                    return pd.Timestamp(int(y), int(m), int(d))
-            return v
-        except Exception:
-            return v
-            
-    s = s.map(map_to_ts)
-    dt = pd.to_datetime(s, errors="coerce", dayfirst=True, infer_datetime_format=True)
-    
-    # محاولة تنسيقات إضافية
-    mask_na = dt.isna()
-    if mask_na.any():
-        s2 = pd.Series(s[mask_na]).astype(str).str.strip()
-        m1 = pd.to_datetime(s2, format="%m/%Y", errors="coerce")
-        m2 = pd.to_datetime(s2, format="%m-%Y", errors="coerce")
-        m3 = pd.to_datetime(s2, format="%Y-%m", errors="coerce")
-        merged = m1.fillna(m2).fillna(m3)
-        dt.loc[mask_na] = merged
-        
-    return dt
 
 # ============ الصفحة الرئيسية ============
 def show_main_dashboard():
@@ -380,8 +324,8 @@ def show_main_dashboard():
     st.markdown("""
     <div class="main-header">
         <div class="main-title">🏥 AMANY</div>
-        <div class="sub-title">Advanced Medical Analytics Networking Yielding</div>
-        <div class="sub-title">منصة التحليل المتقدم للرعاية الصحية الأولية - فرع جنوب سيناء</div>
+        <div class="sub-title">منصة التحليل المتقدم للرعاية الصحية الأولية</div>
+        <div class="sub-title">فرع جنوب سيناء</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -422,53 +366,34 @@ def show_main_dashboard():
         </div>
         """, unsafe_allow_html=True)
 
-    # البيانات السريعة - تحميل تلقائي للبيانات
+    # تحميل البيانات
     st.markdown('<div class="section-title">🚀 تحميل البيانات</div>', unsafe_allow_html=True)
     
-    # زر تحميل البيانات
     if st.button("🔄 تحميل البيانات من Google Sheets", type="primary"):
         with st.spinner("جاري تحميل البيانات..."):
             try:
-                # تحميل البيانات الرئيسية تلقائياً
-                df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
+                # اختبار الاتصال
+                facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
                 
-                if not df_main.empty:
-                    st.success(f"✅ تم تحميل {len(df_main)} صف من البيانات بنجاح")
+                if facilities:
+                    st.success(f"✅ تم العثور على {len(facilities)} منشأة")
                     
-                    # عرض بعض الإحصائيات
-                    numeric_cols = df_main.select_dtypes(include=np.number).columns
-                    if len(numeric_cols) > 0:
-                        st.markdown("### 📊 الإحصائيات السريعة")
-                        col1, col2, col3, col4 = st.columns(4)
-                        
-                        with col1:
-                            total_sum = df_main[numeric_cols].sum().sum()
-                            st.metric("إجمالي النشاط", f"{total_sum:,.0f}")
-                            
-                        with col2:
-                            avg_per_col = df_main[numeric_cols].mean().mean()
-                            st.metric("متوسط النشاط", f"{avg_per_col:,.0f}")
-                            
-                        with col3:
-                            max_value = df_main[numeric_cols].max().max()
-                            st.metric("أعلى قيمة", f"{max_value:,.0f}")
-                            
-                        with col4:
-                            facilities_count = len(list_facility_sheets(PHC_SPREADSHEET_ID))
-                            st.metric("عدد المنشآت", facilities_count)
+                    # تحميل البيانات الرئيسية
+                    df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
+                    
+                    if not df_main.empty:
+                        st.success(f"✅ تم تحميل {len(df_main)} صف من البيانات")
                         
                         # عرض عينة من البيانات
                         st.markdown("### 📋 عينة من البيانات")
-                        st.dataframe(df_main.head(10), use_container_width=True)
+                        st.dataframe(df_main.head(), use_container_width=True)
                     else:
-                        st.warning("⚠️ لا توجد أعمدة رقمية في البيانات")
+                        st.warning("⚠️ تم الاتصال بنجاح ولكن البيانات فارغة")
                 else:
-                    st.error("❌ لم يتم تحميل أي بيانات")
+                    st.error("❌ تعذر العثور على أي منشآت")
                     
             except Exception as e:
-                st.error(f"❌ خطأ في تحميل البيانات: {e}")
-    else:
-        st.info("💡 انقر فوق زر 'تحميل البيانات' لاستيراد البيانات من Google Sheets")
+                st.error(f"❌ خطأ في تحميل البيانات: {str(e)}")
 
 # ============ عرض لوحة المنشأة ============
 def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
@@ -476,21 +401,6 @@ def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
     if df.empty:
         st.info("📭 لا توجد بيانات لعرضها.")
         return
-        
-    # معالجة العمود الأول كتاريخ
-    date_col = df.columns[0]
-    df = df.copy()
-    df[date_col] = robust_parse_date(df[date_col])
-    df = df.dropna(subset=[date_col])
-    
-    if df.empty:
-        st.info("📅 لا توجد تواريخ صالحة للعرض.")
-        return
-
-    # تحويل الأعمدة الرقمية
-    for col in df.columns:
-        if col != date_col:
-            df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
 
     # الهيدر
     st.markdown(f"""
@@ -502,7 +412,16 @@ def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
 
     # المؤشرات الرئيسية
     st.markdown("### 📈 المؤشرات الرئيسية")
-    numeric_cols = df.select_dtypes(include=np.number).columns
+    
+    # تحويل الأعمدة الرقمية
+    numeric_cols = []
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ""), errors="ignore")
+            if pd.api.types.is_numeric_dtype(df[col]):
+                numeric_cols.append(col)
+        except:
+            pass
     
     if len(numeric_cols) > 0:
         # عرض أهم 6 مؤشرات
@@ -517,53 +436,40 @@ def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
                     <div class="kpi-value">{int(total):,}</div>
                 </div>
                 ''', unsafe_allow_html=True)
-    else:
-        st.info("🔢 لا توجد أعمدة رقمية للعرض.")
-
-    # الرسوم البيانية
-    st.markdown("### 📊 الرسوم البيانية")
-    
-    if len(numeric_cols) >= 2:
+                
+        # رسم بياني
+        st.markdown("### 📊 الرسوم البيانية")
         col1, col2 = st.columns(2)
         
         with col1:
-            # رسم بياني دائري لأعلى 5 قيم
-            top_5 = df[numeric_cols].sum().nlargest(5)
-            if len(top_5) > 0:
+            if len(numeric_cols) >= 2:
+                selected_col = st.selectbox("اختر المؤشر:", numeric_cols)
+                fig_bar = px.bar(
+                    df, 
+                    x=df.index, 
+                    y=selected_col,
+                    title=f"توزيع {selected_col}",
+                    color_discrete_sequence=[NEON_COLORS[1]]
+                )
+                apply_neon_layout(fig_bar, f"توزيع {selected_col}")
+                st.plotly_chart(fig_bar, use_container_width=True)
+        
+        with col2:
+            if len(numeric_cols) >= 3:
+                top_5 = df[numeric_cols].sum().nlargest(5)
                 fig_pie = px.pie(
                     values=top_5.values, 
                     names=top_5.index,
-                    title="توزيع أعلى 5 مؤشرات",
-                    color_discrete_sequence=NEON_COLORS
-                )
-                fig_pie.update_traces(
-                    textposition="inside",
-                    textinfo="percent+label",
-                    textfont=dict(size=14, color="#ffffff"),
-                    marker=dict(line=dict(color="#ffffff", width=2))
+                    title="أعلى 5 مؤشرات"
                 )
                 apply_neon_layout(fig_pie, "توزيع المؤشرات")
                 st.plotly_chart(fig_pie, use_container_width=True)
-
-        with col2:
-            # رسم بياني عمودي
-            if len(numeric_cols) > 0:
-                selected_col = st.selectbox("اختر المؤشر:", numeric_cols, key="bar_chart")
-                fig_bar = px.bar(
-                    df, 
-                    x=date_col, 
-                    y=selected_col,
-                    title=f"تطور {selected_col}",
-                    color_discrete_sequence=[NEON_COLORS[1]]
-                )
-                apply_neon_layout(fig_bar, f"تطور {selected_col}")
-                st.plotly_chart(fig_bar, use_container_width=True)
     else:
-        st.info("📉 تحتاج إلى عمودين رقميين على الأقل للرسوم البيانية.")
+        st.info("🔢 لا توجد أعمدة رقمية للعرض.")
 
     # الجدول التفصيلي
     st.markdown("### 📋 البيانات التفصيلية")
-    st.dataframe(style_dataframe(df), use_container_width=True, height=400)
+    st.dataframe(df, use_container_width=True, height=400)
 
 # ============ الواجهة الرئيسية ============
 def main():
@@ -580,33 +486,36 @@ def main():
         
         app_mode = st.radio(
             "طريقة العرض:",
-            ["الرئيسية", "عرض المنشآت", "مقارنة المنشآت"],
+            ["الرئيسية", "عرض المنشآت"],
             index=0
         )
 
-    # المحتوى الرئيسي بناء على الاختيار
+        st.markdown("""
+        <div class="sidebar-section">
+            <h4>📁 التطبيقات</h4>
+            <p>• ASK AMANY</p>
+            <p>• Inventory</p>
+            <p>• Monthly Indicators</p>
+            <p>• Financial Data</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # المحتوى الرئيسي
     if app_mode == "الرئيسية":
         show_main_dashboard()
         
     elif app_mode == "عرض المنشآت":
         st.markdown('<div class="section-title">🏭 عرض البيانات حسب المنشأة</div>', unsafe_allow_html=True)
         
-        # تحميل قائمة المنشآت تلقائياً
-        with st.spinner("جاري تحميل قائمة المنشآت..."):
-            facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
-            
+        facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
+        
         if facilities:
             selected_facility = st.selectbox("اختر المنشأة:", facilities)
             if selected_facility:
-                with st.spinner(f"جاري تحميل بيانات {selected_facility}..."):
-                    df_facility = get_df_from_sheet(PHC_SPREADSHEET_ID, selected_facility)
-                    display_facility_dashboard(df_facility, selected_facility)
+                df_facility = get_df_from_sheet(PHC_SPREADSHEET_ID, selected_facility)
+                display_facility_dashboard(df_facility, selected_facility)
         else:
-            st.error("❌ لا توجد منشآت متاحة أو تعذر الاتصال بالبيانات")
-            
-    elif app_mode == "مقارنة المنشآت":
-        st.markdown('<div class="section-title">⚖️ مقارنة المنشآت</div>', unsafe_allow_html=True)
-        st.info("🔧 هذه الميزة قيد التطوير...")
+            st.error("❌ لا توجد منشآت متاحة")
 
     # التذييل
     st.markdown("---")
@@ -614,7 +523,6 @@ def main():
     <div style='text-align: center; color: #666; padding: 20px;'>
         <p>⏰ يتم عرض الوقت حسب توقيت القاهرة</p>
         <p>🏥 AMANY Dashboard v3.0 - منصة التحليل المتقدم للرعاية الصحية</p>
-        <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية - فرع جنوب سيناء</p>
     </div>
     """, unsafe_allow_html=True)
 
