@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from collections.abc import Mapping
 import time
-import pytz  # مكتبة جديدة للتوقيت
+import pytz
 
 # ============ إعداد الصفحة والستايل ============
 st.set_page_config(
@@ -161,6 +161,26 @@ h1, h2, h3, h4, h5, h6 {
 .stButton button:hover {
     transform: scale(1.05);
     box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
+}
+
+/* تنسيق النصوص */
+.section-title {
+    color: var(--neon-green) !important;
+    font-size: 28px;
+    font-weight: bold;
+    text-align: center;
+    margin: 25px 0;
+    padding: 10px;
+    border-bottom: 2px solid var(--neon-blue);
+}
+
+.feature-card {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 10px;
+    margin: 10px 0;
+    border: 1px solid var(--neon-blue);
+    text-align: center;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -342,6 +362,91 @@ def robust_parse_date(series: pd.Series) -> pd.Series:
         
     return dt
 
+# ============ الصفحة الرئيسية ============
+def show_main_dashboard():
+    """عرض الصفحة الرئيسية"""
+    
+    # الهيدر الرئيسي
+    st.markdown("""
+    <div class="main-header">
+        <div class="main-title">🏥 AMANY</div>
+        <div class="sub-title">Advanced Medical Analytics Networking Yielding</div>
+        <div class="sub-title">منصة التحليل المتقدم للرعاية الصحية الأولية - فرع جنوب سيناء</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # عرض وقت القاهرة
+    cairo_time = get_cairo_time()
+    st.markdown(f"""
+    <div class="time-display">
+        <div class="time-text">⏰ توقيت القاهرة: {cairo_time.strftime('%Y-%m-%d %H:%M:%S')}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # الميزات الرئيسية
+    st.markdown('<div class="section-title">🎯 الميزات الرئيسية</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>📊 تحليل البيانات</h3>
+            <p>عرض وتحليل المؤشرات الصحية الشاملة</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>🏭 إدارة المنشآت</h3>
+            <p>متابعة أداء المنشآت الصحية المختلفة</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>📈 التقارير</h3>
+            <p>تقارير تفصيلية ورسوم بيانية متقدمة</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # البيانات السريعة
+    st.markdown('<div class="section-title">🚀 نظرة سريعة</div>', unsafe_allow_html=True)
+    
+    try:
+        # محاولة تحميل البيانات الرئيسية
+        df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
+        if not df_main.empty:
+            st.success("✅ تم تحميل البيانات بنجاح")
+            
+            # عرض بعض الإحصائيات
+            numeric_cols = df_main.select_dtypes(include=np.number).columns
+            if len(numeric_cols) > 0:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    total_sum = df_main[numeric_cols].sum().sum()
+                    st.metric("إجمالي النشاط", f"{total_sum:,.0f}")
+                    
+                with col2:
+                    avg_per_col = df_main[numeric_cols].mean().mean()
+                    st.metric("متوسط النشاط", f"{avg_per_col:,.0f}")
+                    
+                with col3:
+                    max_value = df_main[numeric_cols].max().max()
+                    st.metric("أعلى قيمة", f"{max_value:,.0f}")
+                    
+                with col4:
+                    facilities_count = len(list_facility_sheets(PHC_SPREADSHEET_ID))
+                    st.metric("عدد المنشآت", facilities_count)
+        else:
+            st.info("📊 جاهز لتحميل البيانات... استخدم القائمة الجانبية للبدء")
+            
+    except Exception as e:
+        st.warning("⚠️ جاهز للتشغيل - اختر طريقة العرض من القائمة الجانبية")
+
 # ============ عرض لوحة المنشأة ============
 def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
     """عرض لوحة البيانات للمنشأة"""
@@ -440,23 +545,6 @@ def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
 # ============ الواجهة الرئيسية ============
 def main():
     """الواجهة الرئيسية للتطبيق"""
-    
-    # الهيدر الرئيسي
-    st.markdown("""
-    <div class="main-header">
-        <div class="main-title">🏥 AMANY</div>
-        <div class="sub-title">Advanced Medical Analytics Networking Yielding</div>
-        <div class="sub-title">منصة التحليل المتقدم للرعاية الصحية الأولية</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # عرض وقت القاهرة
-    cairo_time = get_cairo_time()
-    st.markdown(f"""
-    <div class="time-display">
-        <div class="time-text">⏰ توقيت القاهرة: {cairo_time.strftime('%Y-%m-%d %H:%M:%S')}</div>
-    </div>
-    """, unsafe_allow_html=True)
 
     # الشريط الجانبي
     with st.sidebar:
@@ -469,18 +557,16 @@ def main():
         
         app_mode = st.radio(
             "طريقة العرض:",
-            ["الإجماليات", "عرض المنشآت", "مقارنة المنشآت"],
+            ["الرئيسية", "عرض المنشآت", "مقارنة المنشآت"],
             index=0
         )
 
-    # المحتوى الرئيسي
-    if app_mode == "الإجماليات":
-        st.header("📊 لوحة التحكم الرئيسية")
-        df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
-        display_facility_dashboard(df_main, "الإجماليات العامة")
+    # المحتوى الرئيسي بناء على الاختيار
+    if app_mode == "الرئيسية":
+        show_main_dashboard()
         
     elif app_mode == "عرض المنشآت":
-        st.header("🏭 عرض البيانات حسب المنشأة")
+        st.markdown('<div class="section-title">🏭 عرض البيانات حسب المنشأة</div>', unsafe_allow_html=True)
         
         # قائمة المنشآت
         facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
@@ -493,7 +579,7 @@ def main():
             st.error("❌ لا توجد منشآت متاحة")
             
     elif app_mode == "مقارنة المنشآت":
-        st.header("⚖️ مقارنة المنشآت")
+        st.markdown('<div class="section-title">⚖️ مقارنة المنشآت</div>', unsafe_allow_html=True)
         st.info("🔧 هذه الميزة قيد التطوير...")
         # يمكن إضافة كود المقارنة هنا لاحقاً
 
@@ -503,7 +589,7 @@ def main():
     <div style='text-align: center; color: #666; padding: 20px;'>
         <p>⏰ يتم عرض الوقت حسب توقيت القاهرة</p>
         <p>🏥 AMANY Dashboard v3.0 - منصة التحليل المتقدم للرعاية الصحية</p>
-        <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية</p>
+        <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية - فرع جنوب سيناء</p>
     </div>
     """, unsafe_allow_html=True)
 
