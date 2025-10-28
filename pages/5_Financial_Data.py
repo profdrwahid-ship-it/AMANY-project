@@ -415,6 +415,28 @@ def ai_summary(df: pd.DataFrame):
     except Exception:
         return "تعذر إنشاء الملخص."
 
+def safe_dataframe_display(df):
+    """عرض DataFrame بشكل آمن مع تنسيق الأرقام فقط"""
+    try:
+        # نسخ DataFrame لتجنب تعديل الأصل
+        display_df = df.copy()
+        
+        # تحديد الأعمدة الرقمية فقط
+        numeric_cols = display_df.select_dtypes(include=[np.number]).columns
+        
+        if len(numeric_cols) > 0:
+            # تطبيق التنسيق على الأعمدة الرقمية فقط
+            styled_df = display_df.style.format({col: "{:,.0f}" for col in numeric_cols})
+            st.dataframe(styled_df, use_container_width=True, height=400)
+        else:
+            # إذا لم توجد أعمدة رقمية، عرض بدون تنسيق
+            st.dataframe(display_df, use_container_width=True, height=400)
+            
+    except Exception as e:
+        st.warning(f"⚠️ حدث خطأ في تنسيق البيانات: {e}")
+        # العرض بدون تنسيق كبديل آمن
+        st.dataframe(df, use_container_width=True, height=400)
+
 # ============ الواجهة الرئيسية ============
 st.markdown('<div class="subtitle">💰 لوحة البيانات المالية المتقدمة</div>', unsafe_allow_html=True)
 
@@ -461,13 +483,14 @@ with tab1:
     with st.expander("🤖 الملخص الذكي", expanded=True):
         st.info(ai_summary(kpi_base))
     
-    # عرض البيانات
+    # عرض البيانات بشكل آمن
     display_df = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
     if display_df.empty:
         display_df = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
     display_df = display_df[["Month"] + [c for c in display_df.columns if c not in ["Month", "Date"]]]
     
-    st.dataframe(display_df.style.format("{:,.0f}"), use_container_width=True, height=400)
+    # استخدام الدالة الآمنة لعرض البيانات
+    safe_dataframe_display(display_df)
 
 with tab2:
     st.markdown("#### 📈 تحليل المؤشرات الرئيسية")
