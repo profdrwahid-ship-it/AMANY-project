@@ -205,12 +205,17 @@ def with_backoff(func, *args, **kwargs):
 def get_spreadsheet(spreadsheet_id: str):
     """الاتصال بملف Google Sheets"""
     try:
+        # التحقق من وجود secrets
+        if "gcp_service_account" not in st.secrets:
+            st.error("❌ لم يتم إعداد مفاتيح الخدمة في Streamlit Cloud")
+            return None
+            
         scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
         client = gspread.authorize(creds)
         return with_backoff(client.open_by_key, spreadsheet_id)
     except Exception as e:
-        st.error(f"❌ خطأ في الاتصال: {e}")
+        st.error(f"❌ خطأ في الاتصال بجوجل شيتس: {e}")
         return None
 
 @st.cache_data(ttl=900)
@@ -219,13 +224,15 @@ def list_facility_sheets(spreadsheet_id: str):
     try:
         sh = get_spreadsheet(spreadsheet_id)
         if not sh:
+            st.error("❌ تعذر الاتصال بملف البيانات")
             return []
         titles = [ws.title for ws in with_backoff(sh.worksheets)]
         # استبعاد الأوراق غير المرغوبة
         blacklist = {"config", "config!", "readme", "financial", "kpi", "test"}
-        return [t for t in titles if t.strip().lower() not in blacklist]
+        facilities = [t for t in titles if t.strip().lower() not in blacklist]
+        return facilities
     except Exception as e:
-        st.error(f"❌ خطأ في قراءة القائمة: {e}")
+        st.error(f"❌ خطأ في قراءة قائمة المنشآت: {e}")
         return []
 
 @st.cache_data(ttl=900)
@@ -239,6 +246,7 @@ def get_df_from_sheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
         vals = with_backoff(ws.get_all_values)
         
         if not vals:
+            st.warning(f"⚠️ الورقة '{worksheet_name}' فارغة")
             return pd.DataFrame()
             
         # معالجة الرأس
@@ -251,9 +259,11 @@ def get_df_from_sheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
             for i, idx in enumerate(idxs):
                 cols.iloc[idx] = dup if i == 0 else f"{dup}.{i}"
                 
-        return pd.DataFrame(vals[1:], columns=cols)
+        df = pd.DataFrame(vals[1:], columns=cols)
+        st.success(f"✅ تم تحميل {len(df)} صف من '{worksheet_name}'")
+        return df
     except Exception as e:
-        st.error(f"❌ خطأ في قراءة البيانات: {e}")
+        st.error(f"❌ خطأ في قراءة الورقة '{worksheet_name}': {e}")
         return pd.DataFrame()
 
 # ============ الألوان الفوسفورية للرسوم ============
@@ -412,40 +422,53 @@ def show_main_dashboard():
         </div>
         """, unsafe_allow_html=True)
 
-    # البيانات السريعة
-    st.markdown('<div class="section-title">🚀 نظرة سريعة</div>', unsafe_allow_html=True)
+    # البيانات السريعة - تحميل تلقائي للبيانات
+    st.markdown('<div class="section-title">🚀 تحميل البيانات</div>', unsafe_allow_html=True)
     
-    try:
-        # محاولة تحميل البيانات الرئيسية
-        df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
-        if not df_main.empty:
-            st.success("✅ تم تحميل البيانات بنجاح")
-            
-            # عرض بعض الإحصائيات
-            numeric_cols = df_main.select_dtypes(include=np.number).columns
-            if len(numeric_cols) > 0:
-                col1, col2, col3, col4 = st.columns(4)
+    # زر تحميل البيانات
+    if st.button("🔄 تحميل البيانات من Google Sheets", type="primary"):
+        with st.spinner("جاري تحميل البيانات..."):
+            try:
+                # تحميل البيانات الرئيسية تلقائياً
+                df_main = get_df_from_sheet(PHC_SPREADSHEET_ID, "PHC Dashboard")
                 
-                with col1:
-                    total_sum = df_main[numeric_cols].sum().sum()
-                    st.metric("إجمالي النشاط", f"{total_sum:,.0f}")
+                if not df_main.empty:
+                    st.success(f"✅ تم تحميل {len(df_main)} صف من البيانات بنجاح")
                     
-                with col2:
-                    avg_per_col = df_main[numeric_cols].mean().mean()
-                    st.metric("متوسط النشاط", f"{avg_per_col:,.0f}")
+                    # عرض بعض الإحصائيات
+                    numeric_cols = df_main.select_dtypes(include=np.number).columns
+                    if len(numeric_cols) > 0:
+                        st.markdown("### 📊 الإحصائيات السريعة")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            total_sum = df_main[numeric_cols].sum().sum()
+                            st.metric("إجمالي النشاط", f"{total_sum:,.0f}")
+                            
+                        with col2:
+                            avg_per_col = df_main[numeric_cols].mean().mean()
+                            st.metric("متوسط النشاط", f"{avg_per_col:,.0f}")
+                            
+                        with col3:
+                            max_value = df_main[numeric_cols].max().max()
+                            st.metric("أعلى قيمة", f"{max_value:,.0f}")
+                            
+                        with col4:
+                            facilities_count = len(list_facility_sheets(PHC_SPREADSHEET_ID))
+                            st.metric("عدد المنشآت", facilities_count)
+                        
+                        # عرض عينة من البيانات
+                        st.markdown("### 📋 عينة من البيانات")
+                        st.dataframe(df_main.head(10), use_container_width=True)
+                    else:
+                        st.warning("⚠️ لا توجد أعمدة رقمية في البيانات")
+                else:
+                    st.error("❌ لم يتم تحميل أي بيانات")
                     
-                with col3:
-                    max_value = df_main[numeric_cols].max().max()
-                    st.metric("أعلى قيمة", f"{max_value:,.0f}")
-                    
-                with col4:
-                    facilities_count = len(list_facility_sheets(PHC_SPREADSHEET_ID))
-                    st.metric("عدد المنشآت", facilities_count)
-        else:
-            st.info("📊 جاهز لتحميل البيانات... استخدم القائمة الجانبية للبدء")
-            
-    except Exception as e:
-        st.warning("⚠️ جاهز للتشغيل - اختر طريقة العرض من القائمة الجانبية")
+            except Exception as e:
+                st.error(f"❌ خطأ في تحميل البيانات: {e}")
+    else:
+        st.info("💡 انقر فوق زر 'تحميل البيانات' لاستيراد البيانات من Google Sheets")
 
 # ============ عرض لوحة المنشأة ============
 def display_facility_dashboard(df: pd.DataFrame, facility_name: str):
@@ -568,20 +591,22 @@ def main():
     elif app_mode == "عرض المنشآت":
         st.markdown('<div class="section-title">🏭 عرض البيانات حسب المنشأة</div>', unsafe_allow_html=True)
         
-        # قائمة المنشآت
-        facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
+        # تحميل قائمة المنشآت تلقائياً
+        with st.spinner("جاري تحميل قائمة المنشآت..."):
+            facilities = list_facility_sheets(PHC_SPREADSHEET_ID)
+            
         if facilities:
             selected_facility = st.selectbox("اختر المنشأة:", facilities)
             if selected_facility:
-                df_facility = get_df_from_sheet(PHC_SPREADSHEET_ID, selected_facility)
-                display_facility_dashboard(df_facility, selected_facility)
+                with st.spinner(f"جاري تحميل بيانات {selected_facility}..."):
+                    df_facility = get_df_from_sheet(PHC_SPREADSHEET_ID, selected_facility)
+                    display_facility_dashboard(df_facility, selected_facility)
         else:
-            st.error("❌ لا توجد منشآت متاحة")
+            st.error("❌ لا توجد منشآت متاحة أو تعذر الاتصال بالبيانات")
             
     elif app_mode == "مقارنة المنشآت":
         st.markdown('<div class="section-title">⚖️ مقارنة المنشآت</div>', unsafe_allow_html=True)
         st.info("🔧 هذه الميزة قيد التطوير...")
-        # يمكن إضافة كود المقارنة هنا لاحقاً
 
     # التذييل
     st.markdown("---")
