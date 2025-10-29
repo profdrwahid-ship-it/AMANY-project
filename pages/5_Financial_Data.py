@@ -1,3 +1,40 @@
+import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
+
+# اختبار الاتصال
+st.title("🔧 اختبار الاتصال بـ Google Sheets")
+
+try:
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    )
+    client = gspread.authorize(creds)
+    spreadsheet = client.open_by_key(st.secrets["sheets"]["spreadsheet_id"])
+    worksheets = spreadsheet.worksheets()
+    
+    st.success("✅ الاتصال ناجح!")
+    st.write(f"عدد الأوراق: {len(worksheets)}")
+    
+    for i, ws in enumerate(worksheets):
+        st.write(f"**{i+1}. {ws.title}**")
+        try:
+            # جلب بعض البيانات للعرض
+            data = ws.get_all_values()
+            if data:
+                st.write(f"   - الصفوف: {len(data)}، الأعمدة: {len(data[0]) if data else 0}")
+                # عرض أول 3 صفوف
+                if len(data) > 0:
+                    st.write("   - العناوين:", data[0][:5])  # أول 5 أعمدة
+            else:
+                st.write("   - لا توجد بيانات")
+        except Exception as e:
+            st.write(f"   - خطأ في جلب البيانات: {e}")
+            
+except Exception as e:
+    st.error(f"❌ فشل الاتصال: {e}")
+    st.stop()
 # pages/5_Financial_Data.py
 # Financial dashboard with:
 # - Page-wide header (AMANY + full name + current datetime)
