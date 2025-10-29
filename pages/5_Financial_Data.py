@@ -258,7 +258,6 @@ def with_backoff(func, *args, **kwargs):
     raise RuntimeError("فشلت جميع محاولات إعادة الاتصال")
 
 # ============ معرف ملف البيانات ============
-# استخدام Spreadsheet ID من الكود الأصلي
 SPREADSHEET_ID = "1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y"
 
 # ============ الهيدر الرئيسي ============
@@ -391,15 +390,19 @@ def parse_sheet(all_values):
     proc["Month"] = month_series
     proc = proc.dropna(subset=["__MonthDate__"]).set_index("__MonthDate__").sort_index()
 
+    # تحويل جميع الأعمدة إلى رقمية بشكل آمن
     for c in proc.columns:
         c_str = str(c)
         if c_str == "Month" or c_str == first_col_name:
             continue
+        # تنظيف البيانات أولاً
         proc[c] = (proc[c].astype(str)
                      .str.replace(",", "", regex=False)
                      .str.replace("%", "", regex=False)
-                     .replace(["", "-", "—"], "0"))
-        proc[c] = pd.to_numeric(proc[c], errors="coerce").fillna(0)
+                     .replace(["", "-", "—", "N/A", "null", "NULL"], "0")
+                     .str.strip())
+        # تحويل إلى رقمية
+        proc[c] = pd.to_numeric(proc[c], errors='coerce').fillna(0)
 
     return proc, row2, rows
 
@@ -411,24 +414,34 @@ def get_df(spreadsheet_id: str, worksheet_name: str):
 def ai_summary(df: pd.DataFrame):
     try:
         base = df.drop(columns=["Month"], errors="ignore")
+        # التأكد من أن جميع الأعمدة رقمية
+        base = base.select_dtypes(include=[np.number])
+        
         if len(base) < 2:
             return "البيانات غير كافية."
+        
         last, prev = base.iloc[-1], base.iloc[-2]
         rev = [c for c in base.columns if "revenue" in c.lower() or "إيراد" in c.lower()]
         exp = [c for c in base.columns if "expense" in c.lower() or "مصروف" in c.lower()]
         lines = []
+        
         if rev and prev[rev[0]] != 0:
             change_rev = (last[rev].iloc[0] - prev[rev].iloc[0]) / prev[rev].iloc[0] * 100
             lines.append(f"- الإيرادات: {change_rev:+.1f}%.")
+        
         if exp and prev[exp].iloc[0] != 0:
             change_exp = (last[exp].iloc[0] - prev[exp].iloc[0]) / prev[exp].iloc[0] * 100
             lines.append(f"- المصروفات: {change_exp:+.1f}%.")
-        if base.pct_change().mean(numeric_only=True).notna().any():
-            best = base.pct_change().mean(numeric_only=True).idxmax()
-            lines.append(f"- أبرز نمو: {best}.")
+        
+        if len(base.columns) > 0:
+            pct_change = base.pct_change().mean()
+            if pct_change.notna().any():
+                best = pct_change.idxmax()
+                lines.append(f"- أبرز نمو: {best}.")
+        
         return "\n".join(lines) if lines else "لا توجد تغييرات ملحوظة."
-    except Exception:
-        return "تعذر إنشاء الملخص."
+    except Exception as e:
+        return f"تعذر إنشاء الملخص: {str(e)}"
 
 def apply_neon_legend(fig):
     """تطبيق التنسيق الفوسفوري على الليجند فقط"""
@@ -481,176 +494,171 @@ now_dt = now_cairo()
 pm_end = prev_month_end(now_dt)
 
 # التبويبات الرئيسية - نفس التبويبات الأصلية
-tab_raw, tab_proc = st.tabs(["📄 Raw as-is", "📊 Processed + KPIs"])
+tab_raw, tab_proc, tab_charts, tab_analysis = st.tabs(["📄 Raw as-is", "📊 Processed + KPIs", "📈 الرسوم البيانية", "🔬 التحليلات المتقدمة"])
 
 with tab_raw:
+    st.subheader("📄 البيانات الأصلية")
     all_vals = get_all_values(SPREADSHEET_ID, sheet_name)
     row1 = all_vals[0] if len(all_vals) > 0 else []
     row2 = all_vals[1] if len(all_vals) > 1 else []
     row3 = all_vals[2] if len(all_vals) > 2 else []
     safe_cols = resolve_headers_merged(row1, row2, row3)
-    st.dataframe(pd.DataFrame(rows_raw, columns=safe_cols))
+    st.dataframe(pd.DataFrame(rows_raw, columns=safe_cols), use_container_width=True)
 
 with tab_proc:
+    st.subheader("📊 البيانات المعالجة والمؤشرات")
     st.caption(f"الحسابات أدناه حتى نهاية: {pm_end.strftime('%b %Y')}")
+    
     kpi_base = df_f.loc[:pm_end] if not df_f.loc[:pm_end].empty else df_f.copy()
-    st.info(ai_summary(kpi_base))
+    
+    # الملخص الذكي
+    with st.expander("🤖 الملخص الذكي", expanded=True):
+        st.info(ai_summary(kpi_base))
 
+    # عرض البيانات المعالجة
     display_df = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
     if display_df.empty:
         display_df = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
     display_df = display_df[["Month"] + [c for c in display_df.columns if c != "Month"]]
     
-    # إصلاح عرض البيانات - تنسيق الأعمدة الرقمية فقط
+    # عرض البيانات مع تنسيق آمن
     try:
-        # نسخ DataFrame لتجنب تعديل الأصل
         display_df_formatted = display_df.copy()
-        
-        # تحديد الأعمدة الرقمية فقط
         numeric_cols = display_df_formatted.select_dtypes(include=[np.number]).columns
-        
         if len(numeric_cols) > 0:
-            # تطبيق التنسيق على الأعمدة الرقمية فقط
             for col in numeric_cols:
                 display_df_formatted[col] = display_df_formatted[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "")
-        
         st.dataframe(display_df_formatted, use_container_width=True, height=400)
     except Exception:
-        # إذا فشل التنسيق، عرض البيانات بدون تنسيق
         st.dataframe(display_df, use_container_width=True, height=400)
 
-    # مؤشرات الأداء - بنفس الطريقة الأصلية
-    all_cols = [c for c in df_f.columns if c != "Month"]
+    # مؤشرات الأداء
+    st.subheader("📊 مؤشرات الأداء الرئيسية")
     
-    # استخدام Config sheet للحصول على التوتالات
-    totals_cfg = read_totals_list(SPREADSHEET_ID)
-    totals = [c for c in all_cols if c in totals_cfg]
-    avgs = [c for c in all_cols if c not in totals_cfg]
-
-    df_kpi = kpi_base
-
-    def render_kpi_cards(cols, title, is_avg):
-        if not cols:
-            return
-        st.subheader(title)
-        cols_area = st.columns(4)
-        for i, c in enumerate(cols):
-            s = df_kpi[c]
-            if s.empty:
-                continue
-            main_val = s.mean() if is_avg else s.sum()
-            max_val, min_val = s.max(), s.min()
-            try:
-                max_dt = s.idxmax().strftime('%b %Y')
-                min_dt = s.idxmin().strftime('%b %Y')
-            except Exception:
-                max_dt, min_dt = "-", "-"
-            avg_val = s.mean()
-            last_val = s.iloc[-1]
-            growth = ((last_val - avg_val) / avg_val * 100) if avg_val else 0.0
-            up = last_val > avg_val
-            arrow = "↑" if up else "↓"
-            color = "#00ff00" if up else "#ff4136"
-            highlight = ("border:2px solid #00ff00" if abs(growth) >= ALERT_THRESHOLD and up
-                         else "border:2px solid #ff4136" if abs(growth) >= ALERT_THRESHOLD else "")
-            with cols_area[i % 4]:
-                st.markdown(f"""
-                <div style="background:#111;padding:10px;border-radius:10px;{highlight}">
-                  <div style="color:#39ff14;font-weight:bold;text-align:center">{c}</div>
-                  <div style="color:#39ff14;font-size:22px;font-weight:bold;text-align:center">{main_val:,.2f}</div>
-                  <div style="color:#ddd;text-align:center">أعلى: {max_dt} ({max_val:,.2f})</div>
-                  <div style="color:#ddd;text-align:center">أقل: {min_dt} ({min_val:,.2f})</div>
-                </div>
-                <div style="background:#1a1a1a;padding:8px;border-radius:8px;margin-top:6px;text-align:center">
-                  <span style="color:{color};font-weight:bold">{last_val:,.2f}</span>
-                  <span style="color:{color};font-weight:bold">{arrow}</span>
-                  <span style="color:#ccc">{avg_val:,.2f}</span>
-                  <div style="color:{color}">({growth:+.1f}%)</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-    render_kpi_cards(totals, "إجماليات (Sum)", is_avg=False)
-    render_kpi_cards(avgs, "متوسطات (Average)", is_avg=True)
-
-# ============ مقارنة داخل نفس الورقة ============
-st.markdown("---")
-st.subheader("📈 مقارنة مؤشرات داخل نفس الورقة")
-available_cols = [c for c in df_f.columns if c != "Month"]
-sel_cols = st.multiselect("اختر مؤشرات:", available_cols, default=available_cols[:min(3, len(available_cols))])
-chart_type = st.radio("نوع الرسم:", ["Line", "Bar"], horizontal=True, index=0)
-
-fig_same = None
-if sel_cols:
-    df_plot = df_f.loc[:pm_end].copy()
-    if df_plot.empty:
-        df_plot = df_f.copy()
-    fig_same = go.Figure()
-    for c in sel_cols:
-        if chart_type == "Line":
-            fig_same.add_trace(go.Scatter(x=df_plot.index, y=df_plot[c], mode="lines+markers", name=c))
-        else:
-            fig_same.add_trace(go.Bar(x=df_plot.index, y=df_plot[c], name=c))
+    # الحصول على الأعمدة الرقمية فقط
+    numeric_cols = [c for c in df_f.columns if c != "Month" and pd.api.types.is_numeric_dtype(df_f[c])]
     
-    # تطبيق الليجند الفوسفوري فقط
-    fig_same = apply_neon_legend(fig_same)
-    fig_same.update_layout(
-        title=f"داخل نفس الورقة (حتى {pm_end.strftime('%b %Y')})", 
-        paper_bgcolor="black", 
-        plot_bgcolor="black", 
-        font_color="white"
-    )
-    st.plotly_chart(fig_same, use_container_width=True)
+    if not numeric_cols:
+        st.warning("⚠️ لا توجد أعمدة رقمية لعرض المؤشرات.")
+    else:
+        # استخدام Config sheet للحصول على التوتالات
+        totals_cfg = read_totals_list(SPREADSHEET_ID)
+        totals = [c for c in numeric_cols if c in totals_cfg]
+        avgs = [c for c in numeric_cols if c not in totals_cfg]
 
-# ============ مقارنة بين أوراق متعددة ============
-st.markdown("---")
-st.subheader("📊 مقارنة بين أوراق متعددة")
-sel_sheets = st.multiselect("اختر أوراق:", ws_list, default=[sheet_name])
-common_kpi = None
-dfs_map = {}
+        df_kpi = kpi_base[numeric_cols]  # استخدام الأعمدة الرقمية فقط
 
-if sel_sheets:
-    common_cols = set(available_cols)
-    for ws in sel_sheets:
-        d, _, _ = get_df(SPREADSHEET_ID, ws)
-        if not d.empty:
-            dfs_map[ws] = d
-            common_cols &= set([c for c in d.columns if c != "Month"])
-    if common_cols:
-        common_kpi = st.selectbox("المؤشر:", sorted(list(common_cols)))
+        def render_kpi_cards(cols, title, is_avg):
+            if not cols:
+                return
+            st.write(f"**{title}**")
+            cols_area = st.columns(4)
+            
+            for i, c in enumerate(cols):
+                s = df_kpi[c]
+                if s.empty or len(s) == 0:
+                    continue
+                
+                try:
+                    # حساب القيم الأساسية
+                    main_val = s.mean() if is_avg else s.sum()
+                    max_val, min_val = s.max(), s.min()
+                    
+                    # الحصول على التواريخ
+                    try:
+                        max_dt = s.idxmax().strftime('%b %Y')
+                        min_dt = s.idxmin().strftime('%b %Y')
+                    except:
+                        max_dt, min_dt = "-", "-"
+                    
+                    avg_val = s.mean()
+                    last_val = s.iloc[-1] if len(s) > 0 else 0
+                    growth = ((last_val - avg_val) / avg_val * 100) if avg_val != 0 else 0.0
+                    up = last_val > avg_val
+                    arrow = "↑" if up else "↓"
+                    color = "#00ff00" if up else "#ff4136"
+                    highlight = ("border:2px solid #00ff00" if abs(growth) >= ALERT_THRESHOLD and up
+                                 else "border:2px solid #ff4136" if abs(growth) >= ALERT_THRESHOLD else "")
+                    
+                    with cols_area[i % 4]:
+                        st.markdown(f"""
+                        <div style="background:#111;padding:10px;border-radius:10px;{highlight}">
+                          <div style="color:#39ff14;font-weight:bold;text-align:center">{c}</div>
+                          <div style="color:#39ff14;font-size:22px;font-weight:bold;text-align:center">{main_val:,.0f}</div>
+                          <div style="color:#ddd;text-align:center">أعلى: {max_dt} ({max_val:,.0f})</div>
+                          <div style="color:#ddd;text-align:center">أقل: {min_dt} ({min_val:,.0f})</div>
+                        </div>
+                        <div style="background:#1a1a1a;padding:8px;border-radius:8px;margin-top:6px;text-align:center">
+                          <span style="color:{color};font-weight:bold">{last_val:,.0f}</span>
+                          <span style="color:{color};font-weight:bold">{arrow}</span>
+                          <span style="color:#ccc">{avg_val:,.0f}</span>
+                          <div style="color:{color}">({growth:+.1f}%)</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                except Exception as e:
+                    continue
 
-fig_multi = None
-if common_kpi:
-    fig_multi = go.Figure()
-    for ws, d in dfs_map.items():
-        seg = d.loc[:pm_end].copy()
-        if seg.empty:
-            seg = d.copy()
-        fig_multi.add_trace(go.Scatter(x=seg.index, y=seg[common_kpi], mode="lines+markers", name=ws))
+        # عرض المؤشرات
+        if totals:
+            render_kpi_cards(totals, "إجماليات (Sum)", is_avg=False)
+        
+        if avgs:
+            render_kpi_cards(avgs, "متوسطات (Average)", is_avg=True)
+
+with tab_charts:
+    st.subheader("📈 الرسوم البيانية والمقارنات")
     
-    # تطبيق الليجند الفوسفوري فقط
-    fig_multi = apply_neon_legend(fig_multi)
-    fig_multi.update_layout(
-        title=f"{common_kpi} عبر أوراق متعددة (حتى {pm_end.strftime('%b %Y')})", 
-        paper_bgcolor="black", 
-        plot_bgcolor="black", 
-        font_color="white"
-    )
-    st.plotly_chart(fig_multi, use_container_width=True)
+    # مقارنة داخل نفس الورقة
+    st.write("### 📊 مقارنة مؤشرات داخل نفس الورقة")
+    numeric_cols = [c for c in df_f.columns if c != "Month" and pd.api.types.is_numeric_dtype(df_f[c])]
+    
+    if numeric_cols:
+        sel_cols = st.multiselect("اختر مؤشرات:", numeric_cols, default=numeric_cols[:min(3, len(numeric_cols))])
+        chart_type = st.radio("نوع الرسم:", ["Line", "Bar"], horizontal=True, index=0)
 
-# ============ التصدير ============
-st.markdown("---")
-exp_all = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
-if exp_all.empty:
-    exp_all = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
-exp_all = exp_all[["Month"] + [c for c in exp_all.columns if c != "Month"]]
-st.download_button("📥 تصدير CSV", exp_all.to_csv(index=False).encode("utf-8"), f"{sheet_name}.csv", "text/csv")
+        if sel_cols:
+            df_plot = df_f.loc[:pm_end].copy()
+            if df_plot.empty:
+                df_plot = df_f.copy()
+            
+            fig_same = go.Figure()
+            for c in sel_cols:
+                if chart_type == "Line":
+                    fig_same.add_trace(go.Scatter(
+                        x=df_plot.index, 
+                        y=df_plot[c], 
+                        mode="lines+markers", 
+                        name=c,
+                        line=dict(width=3)
+                    ))
+                else:
+                    fig_same.add_trace(go.Bar(
+                        x=df_plot.index, 
+                        y=df_plot[c], 
+                        name=c
+                    ))
+            
+            # تطبيق الليجند الفوسفوري
+            fig_same = apply_neon_legend(fig_same)
+            fig_same.update_layout(
+                title=f"مقارنة المؤشرات داخل {sheet_name}",
+                paper_bgcolor="black", 
+                plot_bgcolor="black", 
+                font_color="white",
+                height=500
+            )
+            st.plotly_chart(fig_same, use_container_width=True)
+    else:
+        st.warning("⚠️ لا توجد أعمدة رقمية لعرض الرسوم البيانية.")
 
-# ============ التذييل ============
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #666; padding: 20px;'>
-    <p>⏰ يتم عرض الوقت حسب توقيت القاهرة</p>
-    <p>💰 AMANY Financial Dashboard - منصة التحليل المالي المتقدم</p>
-    <p style='font-size: 12px;'>© 2024 الهيئة العامة للرعاية الصحية - فرع جنوب سيناء</p>
-</div>
-""", unsafe_allow_html=True)
+    # مقارنة بين أوراق متعددة
+    st.write("### 🔄 مقارنة بين أوراق متعددة")
+    sel_sheets = st.multiselect("اختر أوراق للمقارنة:", ws_list, default=[sheet_name])
+    common_kpi = None
+    dfs_map = {}
+
+    if sel_sheets:
+        common_cols = set(numeric_cols) if numeric_cols else set()
+        for ws in sel_sheets:
+            if ws != sheet_name: 
