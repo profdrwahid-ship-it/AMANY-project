@@ -57,6 +57,13 @@ st.markdown("""
         border-left: 4px solid #faad14;
         margin: 10px 0;
     }
+    .success-card {
+        background: #f6ffed;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #52c41a;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -324,7 +331,7 @@ class FinancialAnalyst:
         return "\n".join(analysis)
 
 # ---------------------------
-# دوال الاتصال بجوجل شيتس
+# دوال الاتصال بجوجل شيتس - معدلة
 # ---------------------------
 
 @st.cache_resource
@@ -343,11 +350,46 @@ def get_google_sheets_client():
 
 @st.cache_data
 def get_spreadsheet_data(_client, spreadsheet_id):
-    """جلب بيانات السبريدشيت"""
+    """جلب بيانات السبريدشيت مع معالجة العناوين المكررة"""
     try:
         spreadsheet = _client.open_by_key(spreadsheet_id)
         worksheets = spreadsheet.worksheets()
-        return {ws.title: ws.get_all_records() for ws in worksheets}
+        data_dict = {}
+        
+        for ws in worksheets:
+            try:
+                # طريقة بديلة بدون استخدام get_all_records
+                all_data = ws.get_all_values()
+                
+                if len(all_data) > 0:
+                    # معالجة العناوين المكررة
+                    headers = all_data[0]
+                    unique_headers = []
+                    header_count = {}
+                    
+                    for header in headers:
+                        header_str = str(header).strip()
+                        if header_str in header_count:
+                            header_count[header_str] += 1
+                            unique_headers.append(f"{header_str}_{header_count[header_str]}")
+                        else:
+                            header_count[header_str] = 1
+                            unique_headers.append(header_str)
+                    
+                    # إنشاء DataFrame يدوياً
+                    if len(all_data) > 1:
+                        data_rows = all_data[1:]
+                        df = pd.DataFrame(data_rows, columns=unique_headers)
+                        data_dict[ws.title] = df
+                    else:
+                        data_dict[ws.title] = pd.DataFrame(columns=unique_headers)
+                        
+            except Exception as e:
+                st.warning(f"تحذير في ورقة {ws.title}: {e}")
+                continue
+                
+        return data_dict
+        
     except Exception as e:
         st.error(f"خطأ في جلب البيانات: {e}")
         return {}
@@ -380,14 +422,13 @@ def main():
         st.subheader("🔗 إعدادات البيانات")
         spreadsheet_id = st.text_input(
             "معرف ملف Google Sheets:",
-            value="1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y",
+            value="1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y",  # تم التصحيح هنا
             help="أدخل الـ Spreadsheet ID الخاص بملفك"
         )
     
     with col2:
         st.subheader("⚡ الإجراءات")
         load_data = st.button("🔄 تحميل البيانات", type="primary")
-        clear_chat = st.button("🗑️ مسح المحادثة")
     
     # تحميل البيانات
     if load_data and spreadsheet_id:
@@ -404,10 +445,10 @@ def main():
                     selected_sheet = st.selectbox("📄 اختر الورقة للتحليل:", sheets_list)
                     
                     if selected_sheet:
-                        df = pd.DataFrame(data_dict[selected_sheet])
+                        df = data_dict[selected_sheet]
                         df = clean_dataframe(df)
                         
-                        st.info(f"📊 ورقة: {selected_sheet} - {len(df)} صف × {len(df.columns)} عمود")
+                        st.markdown(f'<div class="success-card">📊 ورقة: {selected_sheet} - {len(df)} صف × {len(df.columns)} عمود</div>', unsafe_allow_html=True)
                         
                         # عرض عينة من البيانات
                         with st.expander("👀 معاينة البيانات"):
@@ -456,14 +497,11 @@ def main():
                                     col_exp1, col_exp2 = st.columns(2)
                                     with col_exp1:
                                         st.download_button(
-                                            "📥 تحميل التقرير كـ PDF",
+                                            "📥 تحميل التقرير كـ نص",
                                             result,
                                             file_name=f"تحليل_{selected_sheet}.txt",
                                             mime="text/plain"
                                         )
-                                    with col_exp2:
-                                        if st.button("📊 إنشاء رسوم بيانية"):
-                                            create_visualizations(df, selected_columns if 'selected_columns' in locals() else available_columns)
                                     
                                 except Exception as e:
                                     st.error(f"حدث خطأ أثناء التحليل: {e}")
@@ -488,62 +526,6 @@ def main():
     with col_q3:
         if st.button("🎯 ما هي التوصيات؟"):
             st.info("سيقدم AMANY توصيات استراتيجية بناءً على تحليل البيانات والأداء التاريخي")
-    
-    # قسم المساعدة
-    with st.expander("ℹ️ كيفية الاستخدام"):
-        st.markdown("""
-        ### دليل استخدام ASK AMANY:
-        
-        1. **أدخل Spreadsheet ID** الخاص بملف Google Sheets
-        2. **انقر على تحميل البيانات** لجلب جميع الأوراق
-        3. **اختر الورقة** التي تريد تحليلها
-        4. **اختر نوع التحليل** المناسب لاحتياجاتك
-        5. **انقر على تنفيذ التحليل** للحصول على التقرير
-        
-        ### أنواع التحليل المتاحة:
-        - 📊 **تقرير إحصائي:** تحليل شامل لجميع المؤشرات
-        - 📝 **مقال تحليلي:** تقرير مفصل بصيغة مقال
-        - ⚖️ **مقارنة بين الأعمدة:** تحليل العلاقات بين المؤشرات
-        - 📅 **تحليل الاتجاهات:** دراسة التغير الزمني
-        - 🔮 **توقع مبسط:** تنبؤ بالقيم المستقبلية
-        - 🎯 **تحليل الأداء:** تقييم أداء المؤشرات
-        """)
-
-def create_visualizations(df, columns):
-    """إنشاء رسوم بيانية تفاعلية"""
-    st.subheader("📊 الرسوم البيانية التفاعلية")
-    
-    numeric_columns = df[columns].select_dtypes(include=[np.number]).columns
-    
-    if len(numeric_columns) > 0:
-        # رسم بياني خطي للاتجاهات
-        fig_trend = go.Figure()
-        for col in numeric_columns[:3]:  # أول 3 أعمدة
-            fig_trend.add_trace(go.Scatter(
-                x=df.index, 
-                y=df[col],
-                name=col,
-                mode='lines+markers'
-            ))
-        
-        fig_trend.update_layout(
-            title="الاتجاهات الزمنية للمؤشرات الرئيسية",
-            xaxis_title="الفترة الزمنية",
-            yaxis_title="القيمة"
-        )
-        
-        st.plotly_chart(fig_trend, use_container_width=True)
-        
-        # رسم بياني أعمدة للمقارنة
-        if len(numeric_columns) > 1:
-            avg_values = df[numeric_columns].mean()
-            fig_bar = px.bar(
-                x=avg_values.index,
-                y=avg_values.values,
-                title="متوسط قيم المؤشرات",
-                labels={'x': 'المؤشر', 'y': 'المتوسط'}
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
 
 if __name__ == "__main__":
     main()
