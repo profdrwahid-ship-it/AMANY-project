@@ -1,40 +1,3 @@
-import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
-
-# اختبار الاتصال
-st.title("🔧 اختبار الاتصال بـ Google Sheets")
-
-try:
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
-    )
-    client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(st.secrets["sheets"]["spreadsheet_id"])
-    worksheets = spreadsheet.worksheets()
-    
-    st.success("✅ الاتصال ناجح!")
-    st.write(f"عدد الأوراق: {len(worksheets)}")
-    
-    for i, ws in enumerate(worksheets):
-        st.write(f"**{i+1}. {ws.title}**")
-        try:
-            # جلب بعض البيانات للعرض
-            data = ws.get_all_values()
-            if data:
-                st.write(f"   - الصفوف: {len(data)}، الأعمدة: {len(data[0]) if data else 0}")
-                # عرض أول 3 صفوف
-                if len(data) > 0:
-                    st.write("   - العناوين:", data[0][:5])  # أول 5 أعمدة
-            else:
-                st.write("   - لا توجد بيانات")
-        except Exception as e:
-            st.write(f"   - خطأ في جلب البيانات: {e}")
-            
-except Exception as e:
-    st.error(f"❌ فشل الاتصال: {e}")
-    st.stop()
 # pages/5_Financial_Data.py
 # Financial dashboard with:
 # - Page-wide header (AMANY + full name + current datetime)
@@ -178,7 +141,6 @@ def get_spreadsheet(spreadsheet_id: str):
         return with_backoff(client.open_by_key, spreadsheet_id)
     except Exception as e:
         st.error(f"خطأ في المصادقة: {e}")
-        st.error(traceback.format_exc())
         return None
 
 @st.cache_data(ttl=900)
@@ -258,54 +220,129 @@ def resolve_headers_merged(row1: list, row2: list, row3: list) -> list:
     return make_headers_unique(tmp)
 
 # ---------------- Parsing ----------------
-def _clean_numeric(s: pd.Series) -> pd.Series:
-    s = (s.astype(str)
-         .str.replace(',', '', regex=False)
-         .str.replace('%', '', regex=False)
-         .replace(['', '-', '—'], '0'))
-    return pd.to_numeric(s, errors='coerce').fillna(0)
-
 def parse_sheet(all_values):
-    if not all_values or len(all_values) < 3:
+    if not all_values or len(all_values) < 1:
+        st.warning("البيانات غير كافية أو فارغة")
         return pd.DataFrame(), [], []
 
-    row1 = all_values[0]
-    row2 = all_values[1]
-    row3 = all_values[2]
-    headers_resolved = resolve_headers_merged(row1, row2, row3)
-    rows = all_values[2:]
+    # عرض معلومات التصحيح
+    st.write("### 🔍 تحليل البيانات الخام:")
+    st.write(f"عدد الصفوف: {len(all_values)}")
+    
+    # البحث عن صف العناوين الحقيقي
+    header_row_idx = 0
+    for i, row in enumerate(all_values[:3]):
+        non_empty_cells = sum(1 for cell in row if str(cell).strip())
+        st.write(f"الصف {i}: {row[:5]}... (خلايا غير فارغة: {non_empty_cells})")
+        if non_empty_cells > len(row) * 0.5:  # إذا كان أكثر من 50% من الخلايا غير فارغة
+            header_row_idx = i
+            break
 
-    raw_df = pd.DataFrame(rows, columns=headers_resolved)
-    if raw_df.shape[1] == 0:
-        return pd.DataFrame(), row2, rows
+    st.write(f"✅ سيتم استخدام الصف {header_row_idx} كعناوين")
 
-    raw_df = raw_df.loc[:, ~(raw_df.columns.astype(str).str.strip() == "")]
+    # استخدام الصف المناسب كعناوين
+    header_row = all_values[header_row_idx]
+    data_rows = all_values[header_row_idx + 1:]
+    
+    # تنظيف العناوين
+    cleaned_headers = []
+    for h in header_row:
+        h_str = str(h).strip()
+        if not h_str:
+            h_str = f"Column_{len(cleaned_headers)+1}"
+        cleaned_headers.append(h_str)
+    
+    # جعل العناوين فريدة
+    headers_resolved = make_headers_unique(cleaned_headers)
+    st.write(f"العناوين النهائية: {headers_resolved}")
 
-    first_col_name = str(raw_df.columns[0])
-    month_series = raw_df.iloc[:, 0].astype(str).str.strip()
+    # إنشاء DataFrame
+    raw_df = pd.DataFrame(data_rows, columns=headers_resolved)
+    
+    if raw_df.empty:
+        st.warning("لا توجد بيانات بعد العناوين")
+        return pd.DataFrame(), header_row, data_rows
 
-    dates = pd.to_datetime(month_series, errors="coerce")
-    mask = dates.isna()
-    if mask.any():
-        dates.loc[mask] = pd.to_datetime(month_series[mask], format="%m/%Y", errors="coerce")
-    dates = dates.dt.to_period("M").dt.to_timestamp()
+    st.write(f"📊 شكل البيانات: {raw_df.shape}")
 
-    proc = raw_df.copy()
-    proc["__MonthDate__"] = dates
-    proc["Month"] = month_series
-    proc = proc.dropna(subset=["__MonthDate__"]).set_index("__MonthDate__").sort_index()
+    # معالجة عمود التاريخ (العمود الأول)
+    if len(raw_df.columns) > 0:
+        first_col = raw_df.columns[0]
+        st.write(f"العمود الأول: '{first_col}'")
+        
+        # عرض عينات من البيانات في العمود الأول
+        date_samples = raw_df.iloc[:5, 0].tolist()
+        st.write(f"عينات من العمود الأول: {date_samples}")
 
-    for c in proc.columns:
-        c_str = str(c)
-        if c_str == "Month" or c_str == first_col_name:
-            continue
-        proc[c] = (proc[c].astype(str)
-                     .str.replace(",", "", regex=False)
-                     .str.replace("%", "", regex=False)
-                     .replace(["", "-", "—"], "0"))
-        proc[c] = pd.to_numeric(proc[c], errors="coerce").fillna(0)
+        # تحويل التواريخ بمرونة
+        date_series = raw_df.iloc[:, 0].astype(str).str.strip()
+        
+        # محاولات متعددة لتحليل التواريخ
+        dates = pd.to_datetime(date_series, errors='coerce')
+        
+        # إذا فشل التحويل، جرب التنسيقات الشائعة
+        if dates.isna().any():
+            st.write("🔄 محاولة تحويل التواريخ بتنسيقات بديلة...")
+            for fmt in ['%m/%Y', '%m-%Y', '%Y/%m', '%Y-%m', '%b %Y', '%B %Y']:
+                mask = dates.isna()
+                if mask.any():
+                    try:
+                        parsed = pd.to_datetime(date_series[mask], format=fmt, errors='coerce')
+                        dates[mask] = parsed
+                        st.write(f"   - تنسيق {fmt}: نجح في {parsed.notna().sum()} صف")
+                    except:
+                        continue
 
-    return proc, row2, rows
+        # إذا بقي هناك تواريخ فارغة، إنشاء تواريخ افتراضية
+        if dates.isna().any():
+            st.write("📅 استخدام تواريخ افتراضية للبيانات الفارغة...")
+            base_date = pd.Timestamp('2020-01-01')
+            na_count = dates.isna().sum()
+            for i in range(len(dates)):
+                if pd.isna(dates.iloc[i]):
+                    dates.iloc[i] = base_date + pd.DateOffset(months=i)
+            st.write(f"   - تم تعيين {na_count} تاريخ افتراضي")
+
+        st.write(f"✅ التواريخ النهائية: {dates.tolist()[:5]}...")
+
+        # إضافة التواريخ إلى DataFrame
+        proc = raw_df.copy()
+        proc["__MonthDate__"] = dates
+        proc["Month"] = date_series
+        
+        # تنظيف البيانات الرقمية في جميع الأعمدة الأخرى
+        numeric_cols = [col for col in proc.columns if col not in ['__MonthDate__', 'Month', first_col]]
+        st.write(f"🔄 تنظيف {len(numeric_cols)} عمود رقمي...")
+        
+        clean_count = 0
+        for col in numeric_cols:
+            original_sample = proc[col].head(3).tolist()
+            proc[col] = (proc[col].astype(str)
+                         .str.replace(r'[,\s]', '', regex=True)  # إزالة الفواصل والمسافات
+                         .str.replace('%', '', regex=False)
+                         .replace(['', '-', '—', 'N/A', 'n/a', 'NULL', 'null', 'None'], '0')
+                         .replace(['NaN', 'nan', 'Infinity', 'inf'], '0'))
+            
+            # التحويل إلى رقم
+            proc[col] = pd.to_numeric(proc[col], errors='coerce').fillna(0)
+            
+            cleaned_sample = proc[col].head(3).tolist()
+            if any(x != 0 for x in proc[col]):
+                clean_count += 1
+            
+            st.write(f"   - {col}: {original_sample} → {cleaned_sample}")
+
+        st.write(f"✅ تم تنظيف {clean_count}/{len(numeric_cols)} عمود بنجاح")
+
+        # إزالة الصفوف التي لا تحتوي على تواريخ صالحة والفرز
+        proc = proc.dropna(subset=['__MonthDate__']).set_index('__MonthDate__').sort_index()
+
+        st.success(f"🎉 تم تحليل {len(proc)} صف و {len(proc.columns)} عمود بنجاح")
+        return proc, header_row, data_rows
+
+    else:
+        st.warning("لا توجد أعمدة في البيانات")
+        return pd.DataFrame(), header_row, data_rows
 
 @st.cache_data(ttl=900)
 def get_df(spreadsheet_id: str, worksheet_name: str):
@@ -345,12 +382,28 @@ if not SPREADSHEET_ID:
 try:
     ws_list = list_worksheets(SPREADSHEET_ID)
     if not ws_list:
-        st.warning("لا توجد أوراق في الملف أو لا يمكن الوصول إلى الملف")
+        st.warning("📭 لا توجد أوراق في الملف")
+        st.info("""
+        **الحلول المقترحة:**
+        1. تأكد من مشاركة الملف مع: amany-data-reader@amany-health-project.iam.gserviceaccount.com
+        2. تحقق من أن الـ Spreadsheet ID صحيح
+        3. تأكد من وجود أوراق في الملف
+        """)
         st.stop()
+        
+    st.success(f"✅ تم العثور على {len(ws_list)} ورقة")
+    st.write("الأوراق المتاحة:", ws_list)
+    
 except Exception as e:
-    st.error(f"تعذر فتح الملف: {e}")
-    st.error("تفاصيل الخطأ:")
-    st.code(traceback.format_exc())
+    st.error(f"❌ تعذر الوصول إلى الملف")
+    st.error(f"الخطأ: {e}")
+    st.info("""
+    **خطوات استكشاف الأخطاء:**
+    1. تحقق من اتصال الإنترنت
+    2. تأكد من صحة Spreadsheet ID
+    3. تحقق من إعدادات المشاركة في Google Sheets
+    4. تأكد من صحة بيانات الاعتماد في secrets.toml
+    """)
     st.stop()
 
 sheet_name = st.selectbox("اختر الورقة:", ws_list)
@@ -364,7 +417,7 @@ except Exception as e:
     st.error(f"خطأ في تحميل البيانات: {e}")
     st.stop()
 
-# باقي الكود يبقى كما هو...
+# استمرار مع باقي الكود...
 min_d, max_d = df_full.index.min().date(), df_full.index.max().date()
 start_d, end_d = st.date_input("النطاق الزمني:", value=(min_d, max_d), min_value=min_d, max_value=max_d)
 df_f = df_full.loc[pd.to_datetime(start_d):pd.to_datetime(end_d)].copy()
@@ -449,4 +502,153 @@ with tab_proc:
     render_kpi_cards(totals, "إجماليات (Sum)", is_avg=False)
     render_kpi_cards(avgs, "متوسطات (Average)", is_avg=True)
 
-# ... باقي الكود يبقى كما هو (المقارنات، التصدير، إلخ)
+# ---------------- Same-sheet comparison ----------------
+st.markdown("---")
+st.subheader("📈 مقارنة مؤشرات داخل نفس الورقة")
+available_cols = [c for c in df_f.columns if c != "Month"]
+sel_cols = st.multiselect("اختر مؤشرات:", available_cols, default=available_cols[:min(3, len(available_cols))])
+chart_type = st.radio("نوع الرسم:", ["Line", "Bar"], horizontal=True, index=0)
+
+fig_same = None
+if sel_cols:
+    df_plot = df_f.loc[:pm_end].copy()
+    if df_plot.empty:
+        df_plot = df_f.copy()
+    fig_same = go.Figure()
+    for c in sel_cols:
+        if chart_type == "Line":
+            fig_same.add_trace(go.Scatter(x=df_plot.index, y=df_plot[c], mode="lines+markers", name=c))
+        else:
+            fig_same.add_trace(go.Bar(x=df_plot.index, y=df_plot[c], name=c))
+    fig_same.update_layout(title=f"داخل نفس الورقة (حتى {pm_end.strftime('%b %Y')})", paper_bgcolor="black", plot_bgcolor="black", font_color="white")
+    st.plotly_chart(fig_same, use_container_width=True)
+    if KALEIDO:
+        if st.button("📷 حفظ PNG - الرسم الحالي", key="png_same"):
+            try:
+                png_bytes = fig_same.to_image(format="png", scale=2)
+                st.download_button("تنزيل الصورة (PNG)", png_bytes, "same_sheet.png", "image/png", key="dl_same")
+            except Exception as e:
+                st.warning(f"تعذر إنشاء الصورة عبر kaleido: {e}")
+
+# ---------------- Multi-sheet comparison ----------------
+st.markdown("---")
+st.subheader("📊 مقارنة بين أوراق متعددة")
+sel_sheets = st.multiselect("اختر أوراق:", ws_list, default=[sheet_name])
+common_kpi = None
+dfs_map = {}
+
+if sel_sheets:
+    common_cols = set(available_cols)
+    for ws in sel_sheets:
+        d, _, _ = get_df(SPREADSHEET_ID, ws)
+        if not d.empty:
+            dfs_map[ws] = d
+            common_cols &= set([c for c in d.columns if c != "Month"])
+    if common_cols:
+        common_kpi = st.selectbox("المؤشر:", sorted(list(common_cols)))
+
+fig_multi = None
+if common_kpi:
+    fig_multi = go.Figure()
+    for ws, d in dfs_map.items():
+        seg = d.loc[:pm_end].copy()
+        if seg.empty:
+            seg = d.copy()
+        fig_multi.add_trace(go.Scatter(x=seg.index, y=seg[common_kpi], mode="lines+markers", name=ws))
+    fig_multi.update_layout(title=f"{common_kpi} عبر أوراق متعددة (حتى {pm_end.strftime('%b %Y')})", paper_bgcolor="black", plot_bgcolor="black", font_color="white")
+    st.plotly_chart(fig_multi, use_container_width=True)
+    if KALEIDO:
+        if st.button("📷 حفظ PNG - مقارنة الأوراق", key="png_multi"):
+            try:
+                png_bytes = fig_multi.to_image(format="png", scale=2)
+                st.download_button("تنزيل الصورة (PNG)", png_bytes, "multi_sheets.png", "image/png", key="dl_multi")
+            except Exception as e:
+                st.warning(f"تعذر إنشاء الصورة عبر kaleido: {e}")
+
+# ---------------- Advanced: Correlation & Heatmap ----------------
+st.markdown("---")
+st.subheader("تحليل متقدم")
+tab_corr, tab_heat = st.tabs(["Correlation", "Heatmap"])
+
+with tab_corr:
+    if available_cols:
+        xk = st.selectbox("X:", available_cols, key="corr_x")
+        yk = st.selectbox("Y:", [c for c in available_cols if c != xk], index=0 if len(available_cols) < 2 else 1, key="corr_y")
+        df_corr = df_f.loc[:pm_end].copy()
+        if df_corr.empty:
+            df_corr = df_f.copy()
+        corr = df_corr[xk].corr(df_corr[yk]) if xk and yk else np.nan
+        st.metric("معامل الارتباط (Pearson)", f"{corr:.2f}" if pd.notna(corr) else "N/A")
+        if HAS_SM:
+            figc = px.scatter(df_corr.reset_index(), x=xk, y=yk, trendline="ols", title=f"{xk} vs {yk} (حتى {pm_end.strftime('%b %Y')})")
+        else:
+            figc = px.scatter(df_corr.reset_index(), x=xk, y=yk, title=f"{xk} vs {yk} (حتى {pm_end.strftime('%b %Y')}, بدون OLS)")
+        figc.update_layout(paper_bgcolor="black", plot_bgcolor="black", font_color="white")
+        st.plotly_chart(figc, use_container_width=True)
+        if KALEIDO:
+            if st.button("📷 حفظ PNG - الارتباط", key="png_corr"):
+                try:
+                    st.download_button("تنزيل الصورة (PNG)", figc.to_image(format="png", scale=2), "correlation.png", "image/png", key="dl_corr")
+                except Exception as e:
+                    st.warning(f"تعذر إنشاء الصورة عبر kaleido: {e}")
+
+with tab_heat:
+    hm_cols = st.multiselect("اختر مؤشرات:", available_cols, default=available_cols[:min(12, len(available_cols))], key="hm_cols")
+    if hm_cols:
+        df_hm = df_f.loc[:pm_end].copy()
+        if df_hm.empty:
+            df_hm = df_f.copy()
+        base = df_hm[hm_cols].copy()
+        std = base.std().replace(0, np.nan)
+        norm = (base - base.mean()) / std
+        f = px.imshow(norm.T, text_auto=".2f", aspect="auto", color_continuous_scale="RdYlGn", title=f"Heatmap (z-score) حتى {pm_end.strftime('%b %Y')}")
+        f.update_layout(paper_bgcolor="black", plot_bgcolor="black", font_color="white")
+        st.plotly_chart(f, use_container_width=True)
+        if KALEIDO:
+            if st.button("📷 حفظ PNG - الخريطة الحرارية", key="png_heat"):
+                try:
+                    st.download_button("تنزيل الصورة (PNG)", f.to_image(format="png", scale=2), "heatmap.png", "image/png", key="dl_heat")
+                except Exception as e:
+                    st.warning(f"تعذر إنشاء الصورة عبر kaleido: {e}")
+
+# ---------------- Export ----------------
+st.markdown("---")
+exp_all = df_f.loc[:pm_end].reset_index().rename(columns={"__MonthDate__": "Date"})
+if exp_all.empty:
+    exp_all = df_f.reset_index().rename(columns={"__MonthDate__": "Date"})
+exp_all = exp_all[["Month"] + [c for c in exp_all.columns if c != "Month"]]
+st.download_button("📥 تصدير CSV", exp_all.to_csv(index=False).encode("utf-8"), f"{sheet_name}.csv", "text/csv")
+
+def to_excel_bytes(dfdict: dict):
+    bio = BytesIO()
+    engine = None
+    try:
+        import xlsxwriter  # noqa
+        engine = "xlsxwriter"
+    except Exception:
+        try:
+            import openpyxl  # noqa
+            engine = "openpyxl"
+        except Exception:
+            engine = None
+
+    if engine is None:
+        import zipfile
+        zbio = BytesIO()
+        with zipfile.ZipFile(zbio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for s, d in dfdict.items():
+                csv_bytes = d.to_csv(index=False).encode("utf-8")
+                zf.writestr(f"{s}.csv", csv_bytes)
+        zbio.seek(0)
+        return zbio.getvalue()
+
+    with pd.ExcelWriter(bio, engine=engine) as w:
+        for s, d in dfdict.items():
+            sname = str(s)[:31]
+            d.to_excel(w, index=False, sheet_name=sname)
+    bio.seek(0)
+    return bio.getvalue()
+
+st.download_button("📊 تصدير Excel", to_excel_bytes({sheet_name: exp_all}),
+                   f"{sheet_name}.xlsx",
+                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
