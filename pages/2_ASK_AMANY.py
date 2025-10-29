@@ -17,6 +17,16 @@ st.set_page_config(
     layout="wide"
 )
 
+# تهيئة حالة الجلسة
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = False
+if 'data_dict' not in st.session_state:
+    st.session_state.data_dict = {}
+if 'current_df' not in st.session_state:
+    st.session_state.current_df = None
+if 'current_sheet' not in st.session_state:
+    st.session_state.current_sheet = None
+
 # تنسيق الصفحة
 st.markdown("""
 <style>
@@ -64,6 +74,13 @@ st.markdown("""
         border-left: 4px solid #52c41a;
         margin: 10px 0;
     }
+    .data-card {
+        background: #f0f8ff;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #1890ff;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,18 +109,26 @@ class FinancialAnalyst:
     
     def detect_data_frequency(self, df):
         """اكتشاف تواتر البيانات (يومي، شهري، سنوي)"""
-        if 'Date' in df.columns and len(df) > 1:
-            try:
-                dates = pd.to_datetime(df['Date'])
-                date_diff = (dates.max() - dates.min()).days
-                if date_diff <= 31:
-                    return "يومي"
-                elif date_diff <= 365:
-                    return "شهري"
-                else:
-                    return "سنوي"
-            except:
-                pass
+        date_columns = ['date', 'تاريخ', 'month', 'شهر', 'year', 'سنة']
+        for col in df.columns:
+            col_lower = str(col).lower()
+            if any(keyword in col_lower for keyword in date_columns):
+                try:
+                    dates = pd.to_datetime(df[col], errors='coerce')
+                    valid_dates = dates.dropna()
+                    if len(valid_dates) > 1:
+                        date_diff = (valid_dates.max() - valid_dates.min()).days
+                        num_periods = len(valid_dates)
+                        avg_days_between = date_diff / num_periods
+                        
+                        if avg_days_between <= 7:
+                            return "يومي"
+                        elif avg_days_between <= 35:
+                            return "شهري"
+                        else:
+                            return "سنوي"
+                except:
+                    pass
         return "غير محدد"
     
     def detect_organization_type(self, sheet_name, columns):
@@ -112,9 +137,10 @@ class FinancialAnalyst:
         columns_lower = [str(col).lower() for col in columns]
         
         # تحليل اسم الورقة والأعمدة
-        healthcare_indicators = ['مستشفى', 'عيادة', 'مريض', 'طبيب', 'علاج', 'health', 'hospital', 'clinic']
-        retail_indicators = ['مبيعات', 'منتج', 'عميل', 'متجر', 'sales', 'product', 'customer']
+        healthcare_indicators = ['مستشفى', 'عيادة', 'مريض', 'طبيب', 'علاج', 'health', 'hospital', 'clinic', 'medical']
+        retail_indicators = ['مبيعات', 'منتج', 'عميل', 'متجر', 'sales', 'product', 'customer', 'revenue']
         service_indicators = ['خدمة', 'عميل', 'مشروع', 'service', 'client', 'project']
+        financial_indicators = ['ميزانية', 'ربح', 'خسارة', 'مصروف', 'إيراد', 'budget', 'profit', 'loss', 'expense', 'income']
         
         if any(indicator in sheet_lower for indicator in healthcare_indicators) or \
            any(any(indicator in col for indicator in healthcare_indicators) for col in columns_lower):
@@ -125,213 +151,295 @@ class FinancialAnalyst:
         elif any(indicator in sheet_lower for indicator in service_indicators) or \
              any(any(indicator in col for indicator in service_indicators) for col in columns_lower):
             return "منشأة خدمية"
+        elif any(indicator in sheet_lower for indicator in financial_indicators) or \
+             any(any(indicator in col for indicator in financial_indicators) for col in columns_lower):
+            return "منشأة مالية"
         else:
             return "منشأة عامة"
     
     def generate_statistical_report(self, df, sheet_name, columns):
         """توليد تقرير إحصائي مفصل"""
-        report = []
-        report.append(f"## 📊 التقرير الإحصائي لـ {sheet_name}")
-        report.append("")
-        
-        # معلومات أساسية
-        org_type = self.detect_organization_type(sheet_name, columns)
-        frequency = self.detect_data_frequency(df)
-        
-        report.append(f"**نوع المنشأة:** {org_type}")
-        report.append(f"**تواتر البيانات:** {frequency}")
-        report.append(f"**فترة البيانات:** {len(df)} فترة")
-        report.append("")
-        
-        # الإحصائيات الوصفية
-        report.append("### 📈 الإحصائيات الوصفية")
-        
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        
-        for col in numeric_columns[:6]:  # عرض أول 6 أعمدة رقمية فقط
-            if df[col].notna().sum() > 0:
-                report.append(f"#### 📋 {col}")
-                report.append(f"- المتوسط: {df[col].mean():,.2f}")
-                report.append(f"- الوسيط: {df[col].median():,.2f}")
-                report.append(f"- الانحراف المعياري: {df[col].std():,.2f}")
-                report.append(f"- القيمة القصوى: {df[col].max():,.2f}")
-                report.append(f"- القيمة الدنيا: {df[col].min():,.2f}")
-                report.append("")
-        
-        # مؤشرات الأداء الرئيسية
-        report.append("### 🎯 مؤشرات الأداء الرئيسية (KPIs)")
-        
-        # البحث عن أعمدة الإيرادات والمصروفات
-        revenue_cols = [col for col in numeric_columns if any(word in str(col).lower() for word in ['إيراد', 'ربح', 'دخل', 'revenue', 'income', 'sales'])]
-        expense_cols = [col for col in numeric_columns if any(word in str(col).lower() for word in ['مصروف', 'تكلفة', 'خسارة', 'expense', 'cost'])]
-        
-        if revenue_cols and expense_cols:
-            total_revenue = df[revenue_cols[0]].sum()
-            total_expense = df[expense_cols[0]].sum()
-            profit = total_revenue - total_expense
-            profit_margin = (profit / total_revenue * 100) if total_revenue > 0 else 0
+        try:
+            report = []
+            report.append(f"## 📊 التقرير الإحصائي لـ {sheet_name}")
+            report.append("")
             
-            report.append(f"**إجمالي الإيرادات:** {total_revenue:,.2f}")
-            report.append(f"**إجمالي المصروفات:** {total_expense:,.2f}")
-            report.append(f"**صافي الربح:** {profit:,.2f}")
-            report.append(f"**هامش الربح:** {profit_margin:.1f}%")
-        
-        return "\n".join(report)
+            # معلومات أساسية
+            org_type = self.detect_organization_type(sheet_name, columns)
+            frequency = self.detect_data_frequency(df)
+            
+            report.append(f"**نوع المنشأة:** {org_type}")
+            report.append(f"**تواتر البيانات:** {frequency}")
+            report.append(f"**فترة البيانات:** {len(df)} سجل")
+            report.append(f"**عدد المؤشرات:** {len(columns)} مؤشر")
+            report.append("")
+            
+            # الإحصائيات الوصفية
+            report.append("### 📈 الإحصائيات الوصفية")
+            
+            numeric_columns = df.select_dtypes(include=[np.number]).columns
+            
+            if len(numeric_columns) == 0:
+                report.append("⚠️ لا توجد أعمدة رقمية في البيانات")
+                return "\n".join(report)
+            
+            for col in numeric_columns[:6]:  # عرض أول 6 أعمدة رقمية فقط
+                if df[col].notna().sum() > 0:
+                    report.append(f"#### 📋 {col}")
+                    report.append(f"- **المتوسط:** {df[col].mean():,.2f}")
+                    report.append(f"- **الوسيط:** {df[col].median():,.2f}")
+                    report.append(f"- **الانحراف المعياري:** {df[col].std():,.2f}")
+                    report.append(f"- **القيمة القصوى:** {df[col].max():,.2f}")
+                    report.append(f"- **القيمة الدنيا:** {df[col].min():,.2f}")
+                    report.append(f"- **مجموع القيم:** {df[col].sum():,.2f}")
+                    report.append("")
+            
+            # مؤشرات الأداء الرئيسية
+            report.append("### 🎯 مؤشرات الأداء الرئيسية (KPIs)")
+            
+            # البحث عن أعمدة الإيرادات والمصروفات
+            revenue_cols = [col for col in numeric_columns if any(word in str(col).lower() for word in ['إيراد', 'ربح', 'دخل', 'revenue', 'income', 'sales'])]
+            expense_cols = [col for col in numeric_columns if any(word in str(col).lower() for word in ['مصروف', 'تكلفة', 'خسارة', 'expense', 'cost'])]
+            
+            if revenue_cols and expense_cols:
+                total_revenue = df[revenue_cols[0]].sum()
+                total_expense = df[expense_cols[0]].sum()
+                profit = total_revenue - total_expense
+                profit_margin = (profit / total_revenue * 100) if total_revenue > 0 else 0
+                
+                report.append(f"**إجمالي الإيرادات:** {total_revenue:,.2f}")
+                report.append(f"**إجمالي المصروفات:** {total_expense:,.2f}")
+                report.append(f"**صافي الربح:** {profit:,.2f}")
+                report.append(f"**هامش الربح:** {profit_margin:.1f}%")
+            
+            # أفضل المؤشرات أداءً
+            report.append("### 🏆 أفضل المؤشرات أداءً")
+            growth_rates = {}
+            for col in numeric_columns:
+                if len(df[col]) > 1 and df[col].iloc[0] != 0:
+                    growth = ((df[col].iloc[-1] - df[col].iloc[0]) / df[col].iloc[0] * 100)
+                    growth_rates[col] = growth
+            
+            if growth_rates:
+                top_3 = sorted(growth_rates.items(), key=lambda x: x[1], reverse=True)[:3]
+                for col, growth in top_3:
+                    report.append(f"- **{col}:** {growth:+.1f}%")
+            
+            return "\n".join(report)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في إنشاء التقرير: {str(e)}"
     
     def generate_analytical_article(self, df, sheet_name, columns):
         """توليد مقال تحليلي"""
-        org_type = self.detect_organization_type(sheet_name, columns)
-        frequency = self.detect_data_frequency(df)
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        
-        article = []
-        article.append(f"# 📝 التحليل الشامل لـ {sheet_name}")
-        article.append("")
-        article.append(f"تمثل ورقة البيانات '{sheet_name}' سجلاً {frequency} لأداء {org_type}، حيث توفر رؤى قيّمة حول المؤشرات الرئيسية للأداء.")
-        article.append("")
-        
-        if len(numeric_columns) > 0:
-            # تحليل أفضل وأسوأ الأداء
-            best_performer = None
-            best_growth = -float('inf')
+        try:
+            org_type = self.detect_organization_type(sheet_name, columns)
+            frequency = self.detect_data_frequency(df)
+            numeric_columns = df.select_dtypes(include=[np.number]).columns
             
-            for col in numeric_columns:
-                if len(df[col]) > 1:
-                    growth = ((df[col].iloc[-1] - df[col].iloc[0]) / df[col].iloc[0] * 100) if df[col].iloc[0] != 0 else 0
-                    if growth > best_growth:
-                        best_growth = growth
-                        best_performer = col
-            
-            article.append("## 📈 الأداء البارز")
-            if best_performer:
-                article.append(f"**المؤشر الأكثر نمواً:** {best_performer} بنسبة نمو {best_growth:.1f}%")
+            article = []
+            article.append(f"# 📝 التحليل الشامل لـ {sheet_name}")
+            article.append("")
+            article.append(f"تمثل ورقة البيانات '{sheet_name}' سجلاً {frequency} لأداء {org_type}، حيث توفر رؤى قيّمة حول المؤشرات الرئيسية للأداء خلال {len(df)} فترة زمنية.")
             article.append("")
             
-            # التوصيات
-            article.append("## 💡 التوصيات الاستراتيجية")
-            article.append("1. **تعزيز المؤشرات الإيجابية:** التركيز على دعم المؤشرات التي تظهر نمواً مستمراً")
-            article.append("2. **تحسين الكفاءة:** مراجعة المؤشرات ذات التقلبات الكبيرة")
-            article.append("3. **التخطيط المستقبلي:** استخدام البيانات للتنبؤ بالأداء المستقبلي")
-            article.append("")
-        
-        article.append(f"*تم إنشاء هذا التحليل آلياً بناءً على {len(df)} سجلاً من البيانات*")
-        
-        return "\n".join(article)
+            if len(numeric_columns) > 0:
+                # تحليل أفضل وأسوأ الأداء
+                best_performer = None
+                best_growth = -float('inf')
+                worst_performer = None
+                worst_growth = float('inf')
+                
+                for col in numeric_columns:
+                    if len(df[col]) > 1 and df[col].iloc[0] != 0:
+                        growth = ((df[col].iloc[-1] - df[col].iloc[0]) / df[col].iloc[0] * 100)
+                        if growth > best_growth:
+                            best_growth = growth
+                            best_performer = col
+                        if growth < worst_growth:
+                            worst_growth = growth
+                            worst_performer = col
+                
+                article.append("## 📈 الأداء البارز")
+                if best_performer:
+                    article.append(f"**المؤشر الأكثر نمواً:** {best_performer} بنسبة نمو مذهلة تبلغ {best_growth:.1f}%")
+                if worst_performer and worst_growth < 0:
+                    article.append(f"**المؤشر الأكثر تراجعاً:** {worst_performer} بنسبة تراجع {worst_growth:.1f}%")
+                article.append("")
+                
+                # التوصيات
+                article.append("## 💡 التوصيات الاستراتيجية")
+                article.append("1. **تعزيز المؤشرات الإيجابية:** التركيز على دعم المؤشرات التي تظهر نمواً مستمراً وزيادة الاستثمار فيها")
+                article.append("2. **معالجة نقاط الضعف:** دراسة الأسباب الكامنة وراء تراجع بعض المؤشرات ووضع خطط تحسين")
+                article.append("3. **تحسين الكفاءة:** مراجعة المؤشرات ذات التقلبات الكبيرة للوصول إلى استقرار أفضل في الأداء")
+                article.append("4. **التخطيط المستقبلي:** استخدام البيانات التاريخية للتنبؤ بالأداء المستقبلي ووضع أهداف واقعية")
+                article.append("")
+            
+            article.append(f"*تم إنشاء هذا التحليل آلياً باستخدام ذكاء AMANY الاصطناعي بناءً على {len(df)} سجلاً من البيانات*")
+            
+            return "\n".join(article)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في إنشاء المقال: {str(e)}"
     
     def generate_comparison_analysis(self, df, selected_columns):
         """تحليل المقارنة بين الأعمدة"""
-        analysis = []
-        analysis.append("## ⚖️ تحليل المقارنة بين المؤشرات")
-        analysis.append("")
-        
-        numeric_df = df[selected_columns].select_dtypes(include=[np.number])
-        
-        if len(numeric_df.columns) < 2:
-            return "⚠️ يرجى اختيار عمودين رقميين على الأقل للمقارنة"
-        
-        # مقارنة المتوسطات
-        analysis.append("### 📊 مقارنة المتوسطات")
-        for col in numeric_df.columns:
-            analysis.append(f"- **{col}:** {numeric_df[col].mean():,.2f}")
-        analysis.append("")
-        
-        # مقارنة النمو
-        analysis.append("### 📈 مقارنة معدلات النمو")
-        for col in numeric_df.columns:
-            if len(numeric_df[col]) > 1:
-                growth = ((numeric_df[col].iloc[-1] - numeric_df[col].iloc[0]) / numeric_df[col].iloc[0] * 100) if numeric_df[col].iloc[0] != 0 else 0
-                analysis.append(f"- **{col}:** {growth:+.1f}%")
-        analysis.append("")
-        
-        # التوصيات
-        analysis.append("### 💡 الاستنتاجات")
-        max_growth_col = numeric_df.columns[numeric_df.mean().argmax()]
-        analysis.append(f"- **المؤشر الأعلى قيمة:** {max_growth_col}")
-        analysis.append("- **نصيحة:** التركيز على المؤشرات ذات القيم الأعلى ومعدلات النمو الإيجابية")
-        
-        return "\n".join(analysis)
+        try:
+            analysis = []
+            analysis.append("## ⚖️ تحليل المقارنة بين المؤشرات")
+            analysis.append("")
+            
+            numeric_df = df[selected_columns].select_dtypes(include=[np.number])
+            
+            if len(numeric_df.columns) < 2:
+                return "⚠️ يرجى اختيار عمودين رقميين على الأقل للمقارنة"
+            
+            # مقارنة المتوسطات
+            analysis.append("### 📊 مقارنة المتوسطات")
+            means = numeric_df.mean()
+            for col in numeric_df.columns:
+                analysis.append(f"- **{col}:** {means[col]:,.2f}")
+            analysis.append("")
+            
+            # مقارنة النمو
+            analysis.append("### 📈 مقارنة معدلات النمو")
+            for col in numeric_df.columns:
+                if len(numeric_df[col]) > 1 and numeric_df[col].iloc[0] != 0:
+                    growth = ((numeric_df[col].iloc[-1] - numeric_df[col].iloc[0]) / numeric_df[col].iloc[0] * 100)
+                    trend = "📈" if growth > 0 else "📉" if growth < 0 else "➡️"
+                    analysis.append(f"- {trend} **{col}:** {growth:+.1f}%")
+            analysis.append("")
+            
+            # التوصيات
+            analysis.append("### 💡 الاستنتاجات والتوصيات")
+            max_mean_col = means.idxmax()
+            min_mean_col = means.idxmin()
+            
+            analysis.append(f"- **المؤشر الأعلى قيمة:** {max_mean_col} (متوسط: {means[max_mean_col]:,.2f})")
+            analysis.append(f"- **المؤشر الأقل قيمة:** {min_mean_col} (متوسط: {means[min_mean_col]:,.2f})")
+            analysis.append("- **نصيحة استراتيجية:** التركيز على تطوير المؤشرات ذات القيم المنخفضة مع الحفاظ على تميز المؤشرات المرتفعة")
+            
+            return "\n".join(analysis)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في التحليل: {str(e)}"
     
     def generate_trend_analysis(self, df, columns):
         """تحليل الاتجاهات الزمنية"""
-        analysis = []
-        analysis.append("## 📅 تحليل الاتجاهات الزمنية")
-        analysis.append("")
-        
-        numeric_columns = df[columns].select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_columns) == 0:
-            return "⚠️ لا توجد أعمدة رقمية لتحليل الاتجاهات"
-        
-        analysis.append("### 📈 اتجاهات المؤشرات الرئيسية")
-        
-        for col in numeric_columns[:4]:  # تحليل أول 4 أعمدة
-            if len(df[col]) > 2:
-                # حساب الاتجاه باستخدام الانحدار الخطي البسيط
-                x = np.arange(len(df[col]))
-                y = df[col].values
-                slope = np.polyfit(x, y, 1)[0]
-                
-                trend = "تصاعدي" if slope > 0 else "تنازلي" if slope < 0 else "مستقر"
-                analysis.append(f"- **{col}:** اتجاه {trend} (ميل: {slope:.2f})")
-        
-        return "\n".join(analysis)
+        try:
+            analysis = []
+            analysis.append("## 📅 تحليل الاتجاهات الزمنية")
+            analysis.append("")
+            
+            numeric_columns = df[columns].select_dtypes(include=[np.number]).columns
+            
+            if len(numeric_columns) == 0:
+                return "⚠️ لا توجد أعمدة رقمية لتحليل الاتجاهات"
+            
+            analysis.append("### 📈 اتجاهات المؤشرات الرئيسية")
+            
+            for col in numeric_columns[:4]:  # تحليل أول 4 أعمدة
+                if len(df[col]) > 2:
+                    # حساب الاتجاه باستخدام الانحدار الخطي البسيط
+                    x = np.arange(len(df[col]))
+                    y = df[col].values
+                    slope = np.polyfit(x, y, 1)[0]
+                    
+                    trend = "📈 تصاعدي" if slope > 0 else "📉 تنازلي" if slope < 0 else "➡️ مستقر"
+                    trend_strength = "قوي" if abs(slope) > df[col].std() else "معتدل" if abs(slope) > df[col].std()/2 else "ضعيف"
+                    
+                    analysis.append(f"- **{col}:** اتجاه {trend} ({trend_strength})")
+            
+            analysis.append("")
+            analysis.append("### 💡 تفسير النتائج")
+            analysis.append("- **الاتجاه التصاعدي:** يشير إلى تحسن في الأداء over time")
+            analysis.append("- **الاتجاه التنازلي:** قد يدل على حاجة للتدخل لتحسين الأداء")
+            analysis.append("- **الاتجاه المستقر:** يعكس استقراراً في الأداء")
+            
+            return "\n".join(analysis)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في تحليل الاتجاهات: {str(e)}"
     
     def generate_simple_forecast(self, df, column):
         """توقع مبسط للقيم المستقبلية"""
-        if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-            return "⚠️ يرجى اختيار عمود رقمي صالح"
-        
-        analysis = []
-        analysis.append(f"## 🔮 توقع مبسط للمؤشر: {column}")
-        analysis.append("")
-        
-        values = df[column].dropna()
-        if len(values) < 3:
-            return "⚠️ لا توجد بيانات كافية للتوقع"
-        
-        # توقع بسيط باستخدام المتوسط المتحرك
-        last_value = values.iloc[-1]
-        avg_growth = values.pct_change().mean()
-        
-        if pd.notna(avg_growth):
-            forecast = last_value * (1 + avg_growth)
-            analysis.append(f"**القيمة الأخيرة:** {last_value:,.2f}")
-            analysis.append(f"**معدل النمو المتوسط:** {avg_growth:.2%}")
-            analysis.append(f"**التوقع للفترة القادمة:** {forecast:,.2f}")
+        try:
+            if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
+                return "⚠️ يرجى اختيار عمود رقمي صالح"
+            
+            analysis = []
+            analysis.append(f"## 🔮 توقع مبسط للمؤشر: {column}")
             analysis.append("")
-            analysis.append("💡 *ملاحظة: هذا توقع مبسط ويعتمد على افتراض استمرار النمط الحالي*")
-        else:
-            analysis.append("⚠️ لا يمكن حساب التوقع بسبب عدم وجود نمط نمو واضح")
-        
-        return "\n".join(analysis)
+            
+            values = df[column].dropna()
+            if len(values) < 3:
+                return "⚠️ لا توجد بيانات كافية للتوقع (يحتاج إلى 3 قيم على الأقل)"
+            
+            # توقع بسيط باستخدام المتوسط المتحرك
+            last_value = values.iloc[-1]
+            avg_growth = values.pct_change().mean()
+            
+            if pd.notna(avg_growth) and not np.isinf(avg_growth):
+                forecast_1 = last_value * (1 + avg_growth)
+                forecast_3 = last_value * (1 + avg_growth) ** 3
+                
+                analysis.append(f"**📊 تحليل السلسلة الزمنية:**")
+                analysis.append(f"- القيمة الأخيرة: {last_value:,.2f}")
+                analysis.append(f"- معدل النمو المتوسط: {avg_growth:+.2%}")
+                analysis.append(f"- عدد الفترات: {len(values)}")
+                analysis.append("")
+                
+                analysis.append(f"**🔮 التوقعات:**")
+                analysis.append(f"- الفترة القادمة: {forecast_1:,.2f}")
+                analysis.append(f"- بعد 3 فترات: {forecast_3:,.2f}")
+                analysis.append("")
+                
+                analysis.append("💡 *ملاحظة: هذا توقع مبسط ويعتمد على افتراض استمرار النمط الحالي*")
+                analysis.append("⚠️ *التحذير: التوقعات قد تختلف بناءً على عوامل خارجية*")
+            else:
+                analysis.append("⚠️ لا يمكن حساب التوقع بسبب عدم وجود نمط نمو واضح")
+            
+            return "\n".join(analysis)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في التوقع: {str(e)}"
     
     def generate_performance_analysis(self, df, columns):
         """تحليل مؤشرات الأداء"""
-        analysis = []
-        analysis.append("## 🎯 تحليل مؤشرات الأداء")
-        analysis.append("")
-        
-        numeric_columns = df[columns].select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_columns) == 0:
-            return "⚠️ لا توجد أعمدة رقمية لتحليل الأداء"
-        
-        analysis.append("### 📊 تقييم الأداء")
-        
-        for col in numeric_columns[:5]:
-            values = df[col].dropna()
-            if len(values) > 1:
-                current = values.iloc[-1]
-                previous = values.iloc[-2] if len(values) > 1 else values.iloc[0]
-                change = ((current - previous) / previous * 100) if previous != 0 else 0
-                
-                status = "🟢 تحسن" if change > 5 else "🔴 تراجع" if change < -5 else "🟡 مستقر"
-                analysis.append(f"- **{col}:** {current:,.2f} ({status} {change:+.1f}%)")
-        
-        return "\n".join(analysis)
+        try:
+            analysis = []
+            analysis.append("## 🎯 تحليل مؤشرات الأداء")
+            analysis.append("")
+            
+            numeric_columns = df[columns].select_dtypes(include=[np.number]).columns
+            
+            if len(numeric_columns) == 0:
+                return "⚠️ لا توجد أعمدة رقمية لتحليل الأداء"
+            
+            analysis.append("### 📊 تقييم الأداء الحالي")
+            
+            for col in numeric_columns[:5]:
+                values = df[col].dropna()
+                if len(values) > 1:
+                    current = values.iloc[-1]
+                    previous = values.iloc[-2] if len(values) > 1 else values.iloc[0]
+                    change = ((current - previous) / previous * 100) if previous != 0 else 0
+                    
+                    status = "🟢 تحسن كبير" if change > 10 else "🟡 تحسن طفيف" if change > 0 else "🔴 تراجع طفيف" if change > -10 else "🔻 تراجع كبير"
+                    analysis.append(f"- **{col}:** {current:,.2f} ({status} {change:+.1f}%)")
+            
+            analysis.append("")
+            analysis.append("### 🏆 التصنيف حسب الأداء")
+            
+            # تصنيف المؤشرات حسب متوسط القيم
+            means = df[numeric_columns].mean()
+            top_3 = means.nlargest(3)
+            
+            analysis.append("**أعلى 3 مؤشرات أداء:**")
+            for col, value in top_3.items():
+                analysis.append(f"- {col}: {value:,.2f}")
+            
+            return "\n".join(analysis)
+        except Exception as e:
+            return f"⚠️ حدث خطأ في تحليل الأداء: {str(e)}"
 
 # ---------------------------
-# دوال الاتصال بجوجل شيتس - معدلة
+# دوال الاتصال بجوجل شيتس
 # ---------------------------
 
 @st.cache_resource
@@ -368,7 +476,7 @@ def get_spreadsheet_data(_client, spreadsheet_id):
                     header_count = {}
                     
                     for header in headers:
-                        header_str = str(header).strip()
+                        header_str = str(header).strip() or "Column"
                         if header_str in header_count:
                             header_count[header_str] += 1
                             unique_headers.append(f"{header_str}_{header_count[header_str]}")
@@ -380,6 +488,9 @@ def get_spreadsheet_data(_client, spreadsheet_id):
                     if len(all_data) > 1:
                         data_rows = all_data[1:]
                         df = pd.DataFrame(data_rows, columns=unique_headers)
+                        # تنظيف البيانات الرقمية
+                        for col in df.columns:
+                            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='ignore')
                         data_dict[ws.title] = df
                     else:
                         data_dict[ws.title] = pd.DataFrame(columns=unique_headers)
@@ -393,19 +504,6 @@ def get_spreadsheet_data(_client, spreadsheet_id):
     except Exception as e:
         st.error(f"خطأ في جلب البيانات: {e}")
         return {}
-
-def clean_dataframe(df):
-    """تنظيف DataFrame"""
-    # إزالة الصفوف الفارغة
-    df = df.dropna(how='all')
-    
-    # تنظيف الأعمدة الرقمية
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            # محاولة تحويل إلى رقم
-            df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='ignore')
-    
-    return df
 
 # ---------------------------
 # واجهة المستخدم
@@ -422,13 +520,13 @@ def main():
         st.subheader("🔗 إعدادات البيانات")
         spreadsheet_id = st.text_input(
             "معرف ملف Google Sheets:",
-            value="1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y",  # تم التصحيح هنا
+            value="1lELs2hhkOnFVix8HSE4iHpw8r20RXnEMXK9uzHSbT6Y",
             help="أدخل الـ Spreadsheet ID الخاص بملفك"
         )
     
     with col2:
         st.subheader("⚡ الإجراءات")
-        load_data = st.button("🔄 تحميل البيانات", type="primary")
+        load_data = st.button("🔄 تحميل البيانات", type="primary", key="load_data")
     
     # تحميل البيانات
     if load_data and spreadsheet_id:
@@ -438,94 +536,123 @@ def main():
                 data_dict = get_spreadsheet_data(client, spreadsheet_id)
                 
                 if data_dict:
+                    st.session_state.data_loaded = True
+                    st.session_state.data_dict = data_dict
                     st.success(f"✅ تم تحميل {len(data_dict)} ورقة بنجاح")
-                    
-                    # عرض الأوراق المتاحة
-                    sheets_list = list(data_dict.keys())
-                    selected_sheet = st.selectbox("📄 اختر الورقة للتحليل:", sheets_list)
-                    
-                    if selected_sheet:
-                        df = data_dict[selected_sheet]
-                        df = clean_dataframe(df)
-                        
-                        st.markdown(f'<div class="success-card">📊 ورقة: {selected_sheet} - {len(df)} صف × {len(df.columns)} عمود</div>', unsafe_allow_html=True)
-                        
-                        # عرض عينة من البيانات
-                        with st.expander("👀 معاينة البيانات"):
-                            st.dataframe(df.head())
-                        
-                        # قسم التحليل
-                        st.subheader("🤖 تحليل AMANY الذكي")
-                        
-                        # نوع التحليل
-                        analysis_type = st.selectbox(
-                            "اختر نوع التحليل:",
-                            list(analyst.analysis_types.keys())
-                        )
-                        
-                        # اختيار الأعمدة إذا لزم الأمر
-                        available_columns = df.columns.tolist()
-                        
-                        if analysis_type in ['مقارنة بين الأعمدة', 'تحليل الاتجاهات', 'تحليل الأداء']:
-                            selected_columns = st.multiselect(
-                                "اختر الأعمدة للتحليل:",
-                                available_columns,
-                                default=available_columns[:min(3, len(available_columns))]
-                            )
-                        elif analysis_type == 'توقع مبسط':
-                            selected_column = st.selectbox("اختر العمود للتوقع:", available_columns)
-                        else:
-                            selected_columns = available_columns
-                        
-                        # زر التنفيذ
-                        if st.button("🚀 تنفيذ التحليل", type="primary"):
-                            with st.spinner("جاري التحليل..."):
-                                try:
-                                    if analysis_type == 'توقع مبسط':
-                                        result = analyst.generate_simple_forecast(df, selected_column)
-                                    elif analysis_type in ['مقارنة بين الأعمدة', 'تحليل الاتجاهات', 'تحليل الأداء']:
-                                        result = analyst.analysis_types[analysis_type](df, selected_columns)
-                                    else:
-                                        result = analyst.analysis_types[analysis_type](df, selected_sheet, available_columns)
-                                    
-                                    # عرض النتيجة
-                                    st.markdown("---")
-                                    st.markdown("### 📋 نتيجة التحليل")
-                                    st.markdown(f'<div class="analysis-card">{result}</div>', unsafe_allow_html=True)
-                                    
-                                    # خيارات التصدير
-                                    col_exp1, col_exp2 = st.columns(2)
-                                    with col_exp1:
-                                        st.download_button(
-                                            "📥 تحميل التقرير كـ نص",
-                                            result,
-                                            file_name=f"تحليل_{selected_sheet}.txt",
-                                            mime="text/plain"
-                                        )
-                                    
-                                except Exception as e:
-                                    st.error(f"حدث خطأ أثناء التحليل: {e}")
-                
                 else:
                     st.error("❌ لم يتم العثور على بيانات في الملف")
     
-    # قسم الأسئلة الذكية
-    st.markdown("---")
-    st.subheader("💬 أسئلة ذكية يمكنك طرحها")
+    # عرض البيانات إذا كانت محملة
+    if st.session_state.data_loaded and st.session_state.data_dict:
+        st.markdown("---")
+        st.subheader("📊 البيانات المحملة")
+        
+        # عرض الأوراق المتاحة
+        sheets_list = list(st.session_state.data_dict.keys())
+        selected_sheet = st.selectbox("📄 اختر الورقة للتحليل:", sheets_list, key="sheet_selector")
+        
+        if selected_sheet:
+            df = st.session_state.data_dict[selected_sheet]
+            st.session_state.current_df = df
+            st.session_state.current_sheet = selected_sheet
+            
+            st.markdown(f'<div class="data-card">'
+                       f'📋 **الورقة:** {selected_sheet} | '
+                       f'📊 **الأبعاد:** {len(df)} صف × {len(df.columns)} عمود | '
+                       f'🔢 **الأعمدة الرقمية:** {len(df.select_dtypes(include=[np.number]).columns)}'
+                       f'</div>', unsafe_allow_html=True)
+            
+            # عرض عينة من البيانات
+            with st.expander("👀 معاينة البيانات", expanded=True):
+                st.dataframe(df.head(10), use_container_width=True)
+            
+            # قسم التحليل
+            st.markdown("---")
+            st.subheader("🤖 تحليل AMANY الذكي")
+            
+            # نوع التحليل
+            analysis_type = st.selectbox(
+                "اختر نوع التحليل:",
+                list(analyst.analysis_types.keys()),
+                key="analysis_type"
+            )
+            
+            # اختيار الأعمدة إذا لزم الأمر
+            available_columns = df.columns.tolist()
+            
+            if analysis_type in ['مقارنة بين الأعمدة', 'تحليل الاتجاهات', 'تحليل الأداء']:
+                selected_columns = st.multiselect(
+                    "اختر الأعمدة للتحليل:",
+                    available_columns,
+                    default=available_columns[:min(3, len(available_columns))],
+                    key="column_selector"
+                )
+            elif analysis_type == 'توقع مبسط':
+                selected_column = st.selectbox("اختر العمود للتوقع:", available_columns, key="forecast_column")
+            else:
+                selected_columns = available_columns
+            
+            # زر التنفيذ
+            if st.button("🚀 تنفيذ التحليل", type="primary", key="run_analysis"):
+                with st.spinner("جاري التحليل... قد يستغرق بضع ثوانٍ"):
+                    try:
+                        if analysis_type == 'توقع مبسط':
+                            result = analyst.generate_simple_forecast(df, selected_column)
+                        elif analysis_type in ['مقارنة بين الأعمدة', 'تحليل الاتجاهات', 'تحليل الأداء']:
+                            result = analyst.analysis_types[analysis_type](df, selected_columns)
+                        else:
+                            result = analyst.analysis_types[analysis_type](df, selected_sheet, available_columns)
+                        
+                        # عرض النتيجة
+                        st.markdown("---")
+                        st.markdown("### 📋 نتيجة التحليل")
+                        st.markdown(f'<div class="analysis-card">{result}</div>', unsafe_allow_html=True)
+                        
+                        # خيارات التصدير
+                        st.download_button(
+                            "📥 تحميل التقرير كـ نص",
+                            result,
+                            file_name=f"تحليل_{selected_sheet}_{analysis_type}.txt",
+                            mime="text/plain",
+                            key="download_report"
+                        )
+                        
+                    except Exception as e:
+                        st.error(f"حدث خطأ أثناء التحليل: {str(e)}")
+        
+        # قسم الأسئلة الذكية
+        st.markdown("---")
+        st.subheader("💬 أسئلة ذكية فورية")
+        
+        col_q1, col_q2, col_q3 = st.columns(3)
+        
+        with col_q1:
+            if st.button("📈 أفضل مؤشر أداء", key="best_kpi"):
+                if st.session_state.current_df is not None:
+                    with st.spinner("جاري التحليل..."):
+                        result = analyst.generate_performance_analysis(st.session_state.current_df, st.session_state.current_df.columns)
+                        st.markdown(f'<div class="analysis-card">{result}</div>', unsafe_allow_html=True)
+        
+        with col_q2:
+            if st.button("🔄 تحليل الاتجاهات", key="trend_analysis"):
+                if st.session_state.current_df is not None:
+                    with st.spinner("جاري التحليل..."):
+                        result = analyst.generate_trend_analysis(st.session_state.current_df, st.session_state.current_df.columns)
+                        st.markdown(f'<div class="analysis-card">{result}</div>', unsafe_allow_html=True)
+        
+        with col_q3:
+            if st.button("🎯 تقرير إحصائي", key="stat_report"):
+                if st.session_state.current_df is not None:
+                    with st.spinner("جاري التحليل..."):
+                        result = analyst.generate_statistical_report(
+                            st.session_state.current_df, 
+                            st.session_state.current_sheet, 
+                            st.session_state.current_df.columns
+                        )
+                        st.markdown(f'<div class="analysis-card">{result}</div>', unsafe_allow_html=True)
     
-    col_q1, col_q2, col_q3 = st.columns(3)
-    
-    with col_q1:
-        if st.button("📈 ما هو أفضل مؤشر أداء؟"):
-            st.info("سيقوم AMANY بتحليل جميع المؤشرات وتحديد الأفضل أداءً بناءً على معدل النمو والاستقرار")
-    
-    with col_q2:
-        if st.button("🔄 ما هي الاتجاهات السائدة؟"):
-            st.info("سيحلل AMANY الاتجاهات الزمنية للمؤشرات الرئيسية ويحدد ما إذا كانت في تحسن أم تراجع")
-    
-    with col_q3:
-        if st.button("🎯 ما هي التوصيات؟"):
-            st.info("سيقدم AMANY توصيات استراتيجية بناءً على تحليل البيانات والأداء التاريخي")
+    else:
+        st.info("👆 يرجى تحميل البيانات أولاً باستخدام الزر أعلاه")
 
 if __name__ == "__main__":
     main()
